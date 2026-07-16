@@ -1,36 +1,50 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Maho - Personal Assistant
 
-## Getting Started
+Ein persönlicher KI-Assistent, der sich in wenigen Minuten an seinen Nutzer anpasst
+und danach echte Aufgaben übernimmt: Termine, Todos, Erinnerungen - gesteuert in
+natürlicher Sprache, idiotensicher, ohne Konfiguration.
 
-First, run the development server:
+## Die Idee (seit 2023/2024)
+
+Maho basiert auf drei Prinzipien, die ich ausgearbeitet habe, bevor sie 2026 durch
+Projekte wie OpenClaw und Hermes Agent zum Mainstream wurden:
+
+1. **Onboarding statt Konfiguration.** Maho lernt den Nutzer in ~5 Minuten kennen
+   (Lebensbereiche als Mehrfachauswahl, gezielte Fragen pro Bereich) und baut daraus
+   ein Profil, das jede Antwort personalisiert.
+2. **Größenbegrenztes Gedächtnis mit Evaluierung.** Nach jedem Wortwechsel bewertet
+   ein eigener Schritt, was langfristig wichtig ist. Der Speicher ist hart limitiert -
+   das zwingt das System zu priorisieren und zu verdichten, und hält es schnell.
+3. **Aktionen statt Antworten.** Der Assistent beschreibt nicht, was man tun könnte,
+   er tut es: Über eine maschinenlesbare Fähigkeitsbeschreibung (heute: Function
+   Calling / Tools) legt er Termine und Todos direkt an. Nachgefragt wird nur,
+   wenn die Absicht unklar ist.
+
+## Stand der Umsetzung
+
+**Prototyp Juni 2025:** Onboarding-Flow (Name, Lebensbereiche, Fragebögen),
+Prompt-Builder-Pipeline (Profil + Kontextfenster der letzten 10 Nachrichten),
+Chat-, Kalender- und Todo-Screens.
+
+**Update Juli 2026:** Kernkonzepte lauffähig gemacht:
+- Echtes Tool-Calling: Die KI legt Termine und Todos wirklich an (Agenten-Schleife
+  mit clientseitiger Tool-Ausführung, Aktions-Bestätigungen in der UI).
+- Persistentes Gedächtnis mit hartem Limit (1.500 Zeichen) und Evaluierungsschritt
+  nach jedem Wortwechsel.
+- Alle Nutzerdaten (Profil, Termine, Todos, Gedächtnis) persistent.
+- Anbieterneutraler API-Adapter, vorbereitet für weitere Modelle und künftige
+  Konto-Logins ("Sign in with ChatGPT" etc.).
+
+## Setup
 
 ```bash
+npm install
+echo "OPENAI_API_KEY=sk-..." > .env.local
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Optional: `MAHO_MODEL` in `.env.local` setzen (Default: `gpt-4o`).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Stack
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Next.js 15, React 19, TypeScript, Tailwind 4, Zustand (persist).
