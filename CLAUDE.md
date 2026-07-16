@@ -26,7 +26,8 @@ ist es falsch designt.
   bewusst anbieterneutral (messages + tools rein, vollständige Message raus),
   damit weitere Provider / "Sign in with ChatGPT/Claude" später einsteckbar sind.
 - Stores: `lib/todoStore.ts`, `features/calendar/CalendarStore.ts`,
-  `lib/useOnboardingStore.ts` - alle mit zustand/persist (localStorage)
+  `lib/useOnboardingStore.ts`, `lib/chatStore.ts` - alle mit zustand/persist
+  (localStorage)
 - Screens: `app/chat`, `app/calendar`, `app/todos`, `app/onboarding`
 
 ## Harte Regeln (nie verletzen)
@@ -63,6 +64,8 @@ Booster, sobald offiziell verfügbar - immer mit Fallback auf Betreiber-Key.
 3. Erinnerungen: Termine mit Benachrichtigung (Web Push) statt nur Kalendereintrag
 4. Beta-Fähigkeit: einfaches Deployment (Vercel), Zugangsschutz für ~20 Testnutzer
 5. Danach erst: echtes Konto-System und Freemium-Limits
+6. Chat als Hauptbühne, Kalender/Todos als aufklappbare Seitenpanels statt
+   eigener Seiten (UX-Konzept, größerer Umbau)
 
 ## Arbeitsweise
 

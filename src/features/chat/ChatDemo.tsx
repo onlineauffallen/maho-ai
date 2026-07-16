@@ -4,16 +4,14 @@ import { runMahoAgent } from '@/lib/chatService';
 import { useOnboardingStore } from '@/lib/useOnboardingStore';
 import { buildSystemPrompt } from '@/lib/promptBuilder';
 import { useMemoryStore, evaluateAndUpdateMemory } from '@/lib/memory';
+import { useChatStore } from '@/lib/chatStore';
 import BubbleNav from '@/features/common/BubbleNav';
-
-type Message = { sender: 'user' | 'maho'; text: string; actions?: string[] };
 
 export default function ChatDemo() {
   const { name, selectedAreas, answers } = useOnboardingStore();
   const memory = useMemoryStore((s) => s.memory);
-  const [messages, setMessages] = useState<Message[]>([
-    { sender: 'maho', text: 'Hi! Wie kann ich dir helfen?' },
-  ]);
+  const messages = useChatStore((s) => s.messages);
+  const addMessage = useChatStore((s) => s.addMessage);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -26,7 +24,7 @@ export default function ChatDemo() {
     if (!input.trim() || busy) return;
 
     const userText = input.trim();
-    setMessages((msgs) => [...msgs, { sender: 'user', text: userText }]);
+    addMessage({ sender: 'user', text: userText });
     setInput('');
     setBusy(true);
 
@@ -43,17 +41,11 @@ export default function ChatDemo() {
 
     try {
       const { text, actions } = await runMahoAgent({ systemPrompt, history, userInput: userText });
-      setMessages((msgs) => [
-        ...msgs,
-        { sender: 'maho', text, actions: actions.map((a) => a.label) },
-      ]);
+      addMessage({ sender: 'maho', text, actions: actions.map((a) => a.label) });
       // Gedächtnis-Evaluierung im Hintergrund - blockiert den Chat nicht
       void evaluateAndUpdateMemory(userText, text);
     } catch (error) {
-      setMessages((msgs) => [
-        ...msgs,
-        { sender: 'maho', text: '🚨 Sorry, Maho hatte gerade einen Aussetzer. Versuch es bitte nochmal!' },
-      ]);
+      addMessage({ sender: 'maho', text: '🚨 Sorry, Maho hatte gerade einen Aussetzer. Versuch es bitte nochmal!' });
       console.error('Fehler beim Senden:', error);
     } finally {
       setBusy(false);
