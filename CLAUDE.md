@@ -35,7 +35,9 @@ ist es falsch designt.
 1. API-Keys existieren NUR serverseitig (`.env.local`, Route-Handler). Niemals im
    Client-Code, niemals im UI abfragen.
 2. Niemals Nutzer-Passwörter fremder Dienste entgegennehmen. Konto-Verknüpfung
-   nur per OAuth (Browser-Redirect zum Anbieter).
+   nur per OAuth (Browser-Redirect zum Anbieter). Auch keine OAuth-Anbieter-Logins
+   implementieren oder im UI ankündigen, solange kein offizielles Dritt-App-Programm
+   mit offener Registrierung existiert.
 3. Das Gedächtnis-Limit bleibt hart. Bei Platzmangel wird verdichtet/priorisiert,
    nicht das Limit erhöht.
 4. Der Provider-Adapter bleibt dünn und neutral. Keine OpenAI-Spezifika außerhalb
@@ -50,10 +52,14 @@ ist es falsch designt.
 
 ## Geschäftsmodell-Kontext (für Produktentscheidungen)
 
-Zielbild: Maho-Konto per Google/Apple/E-Mail. Freemium: Gratis-Stufe mit günstigem
-Modell (Betreiber zahlt, Limits), Abo-Stufe mit starkem Modell. Anbieter-Logins
-("Sign in with ChatGPT", "Sign in with Claude" mit extra usage credits) als
-Booster, sobald offiziell verfügbar - immer mit Fallback auf Betreiber-Key.
+Zielbild: Maho-Konto per Google/Apple/E-Mail. Monetarisierung ausschließlich über
+Betreiber-Key: Gratis-Stufe mit günstigem Modell und hartem Tageslimit, Abo-Stufe
+mit starkem Modell. Anbieter-Logins (OAuth mit Abrechnung über Nutzerkonto)
+existieren bei keinem Anbieter als offen zugängliches Programm (Stand 07/2026,
+Anthropic: untersagt und volatil; OpenAI: nur Pilot mit Interesse-Formular;
+Google: Mechanismus existiert nicht). Status: Beobachtungspunkt mit ToS-Risiko,
+keine UI und keine Zusagen dafür bauen. Der Provider-Adapter bleibt aus Gründen
+der Modellflexibilität bestehen.
 
 ## Roadmap / Backlog (Reihenfolge = Priorität)
 
