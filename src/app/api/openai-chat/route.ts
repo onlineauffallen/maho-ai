@@ -48,18 +48,44 @@ function buildBody(model: string, messages: unknown, tools: unknown[] | undefine
   };
 }
 
+/**
+ * Die App läuft nicht mehr unter derselben Herkunft wie diese Route: in der
+ * Entwicklung liegt Expo Web auf Port 8081. Nur dort wird freigegeben, in
+ * Produktion muss MAHO_ALLOWED_ORIGIN gesetzt sein.
+ *
+ * Wichtig: das ist kein Zugriffsschutz. Ein Origin-Header ist gefälscht, sobald
+ * jemand die Anfrage nicht im Browser stellt. Der eigentliche Schutz
+ * (Anmeldung, Kontingent, Ratenbegrenzung) fehlt noch und muss vor dem ersten
+ * öffentlichen Deployment stehen.
+ */
+function corsKopf(): Record<string, string> {
+  const erlaubt =
+    process.env.MAHO_ALLOWED_ORIGIN ?? (process.env.NODE_ENV === 'development' ? '*' : '');
+  return erlaubt
+    ? {
+        'Access-Control-Allow-Origin': erlaubt,
+        'Access-Control-Allow-Headers': 'Content-Type',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      }
+    : {};
+}
+
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 204, headers: corsKopf() });
+}
+
 export async function POST(req: NextRequest) {
   if (!apiKey) {
     return NextResponse.json(
       { error: 'OPENAI_API_KEY fehlt. Bitte in .env.local setzen.' },
-      { status: 500 }
+      { status: 500, headers: corsKopf() }
     );
   }
 
   const { messages, tools, purpose } = await req.json();
 
   if (!Array.isArray(messages) || messages.length === 0) {
-    return NextResponse.json({ error: 'messages[] fehlt.' }, { status: 400 });
+    return NextResponse.json({ error: 'messages[] fehlt.' }, { status: 400, headers: corsKopf() });
   }
 
   const cfg = CONFIG[(purpose as Purpose) in CONFIG ? (purpose as Purpose) : 'chat'];
@@ -74,11 +100,14 @@ export async function POST(req: NextRequest) {
   });
 
   if (!res.ok) {
-    return NextResponse.json({ error: await res.text() }, { status: 500 });
+    return NextResponse.json({ error: await res.text() }, { status: 500, headers: corsKopf() });
   }
 
   const data = await res.json();
   // Vollständige Message zurückgeben (content UND tool_calls), nicht nur den Text.
   // usage kommt mit, sonst gibt es später nichts zu messen und nichts zu deckeln.
-  return NextResponse.json({ message: data.choices[0].message, usage: data.usage });
+  return NextResponse.json(
+    { message: data.choices[0].message, usage: data.usage },
+    { headers: corsKopf() }
+  );
 }
