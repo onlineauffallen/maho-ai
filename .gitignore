@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Web-Export der App (lokale Vorschau)
+mobile/dist/
