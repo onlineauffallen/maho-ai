@@ -9,6 +9,7 @@ import { useProfileStore } from '@/lib/profileStore';
 import { useFollowupStore, faelligeWiedervorlagen } from '@/lib/followupStore';
 import { vorschlagAusfuehren } from '@/lib/vorschlaege';
 import { erinnerungenAktualisieren } from '@/lib/benachrichtigungen';
+import { kalenderZugriffSicherstellen } from '@/lib/kalender';
 import { ChatFlaeche } from '@/components/ChatFlaeche';
 
 /** Aus dem Fehler wird ein Satz, mit dem ein Mensch etwas anfangen kann. */
@@ -125,9 +126,10 @@ export default function ChatScreen() {
         // Läuft rein lokal, kostet keinen weiteren Aufruf beim Anbieter.
         const ergebnis = vorschlagAusfuehren(v);
         vorschlagAbschliessen(v.id, `✓ ${ergebnis}`);
-        // Erst hier nach der Erlaubnis für Erinnerungen fragen: jetzt weiß der
-        // Nutzer, wofür sie gut ist. Ein Dialog beim ersten Start wird
-        // weggetippt und ist dann dauerhaft verloren.
+        // Erst hier nach den Systemrechten fragen: jetzt weiß der Nutzer, wofür
+        // sie gut sind. Ein Dialog beim ersten Start wird weggetippt und ist
+        // dann dauerhaft verloren.
+        if (v.art === 'termin') void kalenderZugriffSicherstellen();
         if (v.art !== 'aufgabe') void erinnerungenAktualisieren(true);
       }}
       onVorschlagAblehnen={(v) => {

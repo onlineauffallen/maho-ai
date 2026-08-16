@@ -3,7 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useCalendarStore, type CalendarView } from '@/lib/calendarStore';
 import { useTodoStore } from '@/lib/todoStore';
-import { alsDatum, plusTage, today, wochenStart } from '@/lib/ids';
+import { alsDatum, datumLesbar, plusTage, today, wochenStart } from '@/lib/ids';
 import { abstand, farben, radius, schrift } from '@/lib/theme';
 
 const WOCHENTAGE = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
@@ -14,6 +14,7 @@ type Eintrag = {
   titel: string;
   datum: string;
   zeit?: string;
+  ende?: string;
   art: 'termin' | 'aufgabe';
 };
 
@@ -40,7 +41,7 @@ export default function KalenderScreen() {
   // Termin haben, kämen sonst doppelt: einmal als Termin, einmal als Fälligkeit.
   const eintraege = useMemo<Eintrag[]>(() => {
     const ausTerminen: Eintrag[] = events.map((e) => ({
-      id: e.id, titel: e.title, datum: e.date, zeit: e.time, art: 'termin',
+      id: e.id, titel: e.title, datum: e.date, zeit: e.time, ende: e.endTime, art: 'termin',
     }));
     const ausAufgaben: Eintrag[] = todos
       // Auf die Existenz des Termins prüfen, nicht auf das Vorhandensein des
@@ -141,8 +142,12 @@ export default function KalenderScreen() {
               <View style={{ flex: 1 }}>
                 <Text style={styles.eintragTitel}>{e.titel}</Text>
                 <Text style={styles.eintragZeit}>
-                  {view === 'day' ? '' : `${e.datum} `}
-                  {e.zeit ? `um ${e.zeit}` : e.art === 'aufgabe' ? 'fällig' : 'ganztägig'}
+                  {view === 'day' ? '' : `${datumLesbar(e.datum)}, `}
+                  {e.zeit
+                    ? `${e.zeit}${e.ende ? ` bis ${e.ende}` : ''}`
+                    : e.art === 'aufgabe'
+                      ? 'fällig'
+                      : 'ganztägig'}
                 </Text>
               </View>
             </View>

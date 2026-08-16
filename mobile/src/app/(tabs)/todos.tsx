@@ -11,8 +11,14 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTodoStore, type Todo } from '@/lib/todoStore';
 import { useCalendarStore } from '@/lib/calendarStore';
+import {
+  terminAnlegen,
+  terminAendern,
+  terminLoeschen,
+  kalenderZugriffSicherstellen,
+} from '@/lib/kalender';
 import { useProfileStore, MAX_CATEGORIES } from '@/lib/profileStore';
-import { plusTage, today } from '@/lib/ids';
+import { datumLesbar, plusTage, today } from '@/lib/ids';
 import { abstand, farben, radius, schrift } from '@/lib/theme';
 
 const OHNE = 'Ohne Kategorie';
@@ -29,7 +35,7 @@ function faelligkeitsChips(): { label: string; wert: string }[] {
 
 export default function TodosScreen() {
   const { todos, addTodo, updateTodo, toggleDone, removeTodo } = useTodoStore();
-  const { events, addEvent, updateEvent, removeEvent } = useCalendarStore();
+  const events = useCalendarStore((s) => s.events);
   const { categories, addCategory } = useProfileStore();
 
   const [text, setText] = useState('');
@@ -58,12 +64,13 @@ export default function TodosScreen() {
   function inKalender(todo: Todo) {
     const datum = todo.due ?? heute;
     if (todo.eventId && events.some((e) => e.id === todo.eventId)) {
-      updateEvent(todo.eventId, { date: datum });
+      terminAendern(todo.eventId, { date: datum });
       updateTodo(todo.id, { due: datum });
       return;
     }
-    const ev = addEvent({ title: todo.text, date: datum, todoId: todo.id });
+    const ev = terminAnlegen({ title: todo.text, date: datum, todoId: todo.id });
     updateTodo(todo.id, { eventId: ev.id, due: datum });
+    void kalenderZugriffSicherstellen();
   }
 
   function loeschen(todo: Todo) {
@@ -79,7 +86,7 @@ export default function TodosScreen() {
           text: 'Löschen',
           style: 'destructive',
           onPress: () => {
-            if (todo.eventId) removeEvent(todo.eventId); // sonst bleibt eine Leiche im Kalender
+            if (todo.eventId) terminLoeschen(todo.eventId); // sonst bleibt eine Leiche im Kalender
             removeTodo(todo.id);
           },
         },
@@ -194,7 +201,7 @@ export default function TodosScreen() {
                     <Text style={[styles.aufgabe, todo.done && styles.erledigt]}>{todo.text}</Text>
                     {todo.due && (
                       <Text style={[styles.faellig, ueberfaellig && styles.ueberfaellig]}>
-                        fällig {todo.due}
+                        fällig {datumLesbar(todo.due)}
                         {ueberfaellig ? ' (überfällig)' : ''}
                       </Text>
                     )}

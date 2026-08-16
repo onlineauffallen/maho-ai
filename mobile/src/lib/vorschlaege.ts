@@ -7,7 +7,7 @@
 // aus, und zwar lokal, ohne weiteren Aufruf beim Anbieter. Ein angenommener
 // Vorschlag kostet also nichts extra, und ein abgelehnter kostet einen Tipp
 // statt einer getippten Antwort.
-import { useCalendarStore } from './calendarStore';
+import { terminAnlegen } from './kalender';
 import { useTodoStore } from './todoStore';
 import { useFollowupStore } from './followupStore';
 import { resolveCategory } from './profileStore';
@@ -33,11 +33,7 @@ export function vorschlagAusfuehren(v: Vorschlag, datumUeberschreiben?: string):
   switch (v.art) {
     case 'termin': {
       if (!datum) return 'Ohne Datum geht das nicht.';
-      const ev = useCalendarStore.getState().addEvent({
-        title: v.titel,
-        date: datum,
-        time: v.zeit,
-      });
+      const ev = terminAnlegen({ title: v.titel, date: datum, time: v.zeit });
       return `Steht am ${ev.date}${ev.time ? ` um ${ev.time}` : ''} im Kalender.`;
     }
     case 'aufgabe': {

@@ -3,6 +3,7 @@
 // gegen die App-Stores. Das ist die moderne Version des "Option File"-Konzepts:
 // eine maschinenlesbare Beschreibung, welche Aktionen Maho ausführen kann.
 import { useCalendarStore } from '@/lib/calendarStore';
+import { terminAnlegen, terminAendern, terminLoeschen } from '@/lib/kalender';
 import { useTodoStore } from '@/lib/todoStore';
 import { useProfileStore, resolveCategory, MAX_CATEGORIES } from '@/lib/profileStore';
 import { useFollowupStore } from '@/lib/followupStore';
@@ -56,7 +57,8 @@ export function getToolDefinitions() {
           properties: {
             title: { type: 'string', description: 'Titel des Termins' },
             date: { type: 'string', description: 'Datum im Format YYYY-MM-DD' },
-            time: { type: 'string', description: 'Uhrzeit HH:MM (optional)' },
+            time: { type: 'string', description: 'Beginn, HH:MM (optional)' },
+            endTime: { type: 'string', description: 'Ende, HH:MM. Nur wenn im Gespräch eine Dauer oder ein Ende vorkam.' },
           },
           required: ['title', 'date'],
         },
@@ -226,8 +228,15 @@ export function executeTool(name: string, args: Record<string, unknown>): ToolEr
       if (!istDatum(datum)) return { result: FALSCHES_DATUM(datum) };
       const zeit = args.time ? String(args.time) : undefined;
       if (zeit && !istUhrzeit(zeit)) return { result: FALSCHE_ZEIT(zeit) };
+      const ende = args.endTime ? String(args.endTime) : undefined;
+      if (ende && !istUhrzeit(ende)) return { result: FALSCHE_ZEIT(ende) };
 
-      const ev = cal.addEvent({ title: String(args.title ?? ''), date: datum, time: zeit });
+      const ev = terminAnlegen({
+        title: String(args.title ?? ''),
+        date: datum,
+        time: zeit,
+        endTime: zeit ? ende : undefined,
+      });
       return {
         result: `Termin angelegt: ${JSON.stringify(ev)}`,
         action: { label: `📅 Termin angelegt: ${ev.title} am ${ev.date}${ev.time ? ', ' + ev.time : ''}` },
@@ -241,7 +250,7 @@ export function executeTool(name: string, args: Record<string, unknown>): ToolEr
       if (!cal.events.some((e) => e.id === id)) {
         return { result: 'Kein Termin mit dieser ID. Hol dir den aktuellen Stand mit list_state.' };
       }
-      cal.removeEvent(id);
+      terminLoeschen(id);
       return { result: 'Termin gelöscht.', action: { label: '📅 Termin gelöscht' } };
     }
     case 'add_todo': {
@@ -296,7 +305,7 @@ export function executeTool(name: string, args: Record<string, unknown>): ToolEr
         // Uhrzeit nur anfassen, wenn eine mitkam. Vorher löschte ein reines
         // "schieb das auf Freitag" die bestehende Uhrzeit, weil time: undefined
         // im Patch den alten Wert überschrieben hat.
-        cal.updateEvent(t.eventId, zeit ? { date, time: zeit } : { date });
+        terminAendern(t.eventId, zeit ? { date, time: zeit } : { date });
         todo.updateTodo(t.id, { due: date });
         const alt = cal.events.find((e) => e.id === t.eventId);
         return {
@@ -305,7 +314,7 @@ export function executeTool(name: string, args: Record<string, unknown>): ToolEr
         };
       }
 
-      const ev = cal.addEvent({ title: t.text, date, time: zeit, todoId: t.id });
+      const ev = terminAnlegen({ title: t.text, date, time: zeit, todoId: t.id });
       todo.updateTodo(t.id, { eventId: ev.id, due: date });
       return {
         result: `Aufgabe in den Kalender geschickt: ${JSON.stringify(ev)}`,
@@ -328,7 +337,7 @@ export function executeTool(name: string, args: Record<string, unknown>): ToolEr
       // Hängt ein Termin daran, verschwindet der mit. Sonst bleibt eine Leiche im Kalender.
       const t = todo.todos.find((x) => x.id === String(args.id));
       if (!t) return { result: 'Keine Aufgabe mit dieser ID. Hol dir den aktuellen Stand mit list_state.' };
-      if (t.eventId) cal.removeEvent(t.eventId);
+      if (t.eventId) terminLoeschen(t.eventId);
       todo.removeTodo(t.id);
       return { result: 'Todo gelöscht.', action: { label: `📝 Gelöscht: ${t.text}` } };
     }

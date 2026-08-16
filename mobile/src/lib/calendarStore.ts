@@ -1,4 +1,4 @@
-// src/features/calendar/CalendarStore.ts
+// src/lib/calendarStore.ts
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { appStorage } from './storage';
@@ -9,11 +9,21 @@ export type CalEvent = {
   title: string;
   date: string; // YYYY-MM-DD
   time?: string; // HH:MM
+  /**
+   * Ende, HH:MM. Ohne Ende ist ein Termin im Systemkalender nicht darstellbar,
+   * dort hat jeder Eintrag eine Dauer. Fehlt es, wird STANDARD_DAUER gerechnet.
+   */
+  endTime?: string;
   /** ID der Aufgabe, aus der dieser Termin entstanden ist. Gegenstück zu Todo.eventId. */
   todoId?: string;
+  /** ID desselben Termins im Kalender des Geräts, falls er dort steht. */
+  externalId?: string;
   createdAt: string;
   updatedAt: string;
 };
+
+
+
 
 export type CalendarView = 'day' | 'week' | 'month';
 
@@ -60,28 +70,32 @@ export const useCalendarStore = create<CalendarState>()(
     {
       name: 'maho-calendar',
       storage: appStorage,
-      version: 1,
+      version: 2,
       // Das betrachtete Datum bleibt draußen. Sonst landet man nach einer Woche
       // Pause auf einem alten Tag statt auf heute.
       partialize: (s) => ({ events: s.events, view: s.view }),
       migrate: (persisted, version) => {
         const state = persisted as { events?: Partial<CalEvent>[]; view?: CalendarView } | undefined;
         if (!state?.events) return { events: [], view: 'day' } as unknown as CalendarState;
-        if (version === 0) {
-          const stamp = now();
-          return {
-            view: 'day',
-            events: state.events.map((e) => ({
-              id: e.id ?? newId(),
-              title: e.title ?? '',
-              date: e.date ?? today(),
-              time: e.time || undefined,
-              createdAt: e.createdAt ?? stamp,
-              updatedAt: e.updatedAt ?? stamp,
-            })),
-          } as unknown as CalendarState;
-        }
-        return state as unknown as CalendarState;
+
+        const stamp = now();
+        // v0 kannte weder Zeitstempel noch IDs in dieser Form, v1 kein Ende und
+        // keine Verbindung zum Systemkalender. Beides sind reine Ergänzungen,
+        // deshalb reicht ein Durchlauf für alle alten Fassungen.
+        return {
+          view: state.view ?? 'day',
+          events: state.events.map((e) => ({
+            id: e.id ?? newId(),
+            title: e.title ?? '',
+            date: e.date ?? today(),
+            time: e.time || undefined,
+            endTime: e.endTime || undefined,
+            todoId: e.todoId || undefined,
+            externalId: version < 2 ? undefined : e.externalId,
+            createdAt: e.createdAt ?? stamp,
+            updatedAt: e.updatedAt ?? stamp,
+          })),
+        } as unknown as CalendarState;
       },
     }
   )

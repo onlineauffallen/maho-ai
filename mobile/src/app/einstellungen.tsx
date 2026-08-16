@@ -14,7 +14,7 @@ import { useProfileStore, MAX_PROFILE_CHARS } from '@/lib/profileStore';
 import { useMemoryStore, MAX_MEMORY_CHARS } from '@/lib/memory';
 import { useChatStore } from '@/lib/chatStore';
 import { useTodoStore } from '@/lib/todoStore';
-import { useCalendarStore } from '@/lib/calendarStore';
+import { alleTermineLoeschen } from '@/lib/kalender';
 import { useFollowupStore } from '@/lib/followupStore';
 import { datumLesbar } from '@/lib/ids';
 import { kategorieLoeschen, kategorieUmbenennen, aufgabenIn } from '@/lib/kategorien';
@@ -33,7 +33,6 @@ export default function EinstellungenScreen() {
   const { memory, setMemory } = useMemoryStore();
   const chat = useChatStore();
   const todos = useTodoStore();
-  const kalender = useCalendarStore();
   const followups = useFollowupStore();
 
   const [name, setName] = useState(profil.name);
@@ -69,7 +68,7 @@ export default function EinstellungenScreen() {
             setMemory('');
             chat.leeren();
             todos.leeren();
-            kalender.leeren();
+            alleTermineLoeschen();
             followups.leeren();
             profil.setName('');
             profil.setBasics('');

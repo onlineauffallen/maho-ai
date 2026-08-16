@@ -1,4 +1,4 @@
-import { erinnerungFuerTermin, erinnerungFuerWiedervorlage } from '../src/lib/erinnerungsZeit.ts';
+import { erinnerungFuerTermin, erinnerungFuerWiedervorlage, zeitraum } from '../src/lib/zeitrechnung.ts';
 
 const f = (d: Date | null) => (d ? d.toLocaleString('de-AT', { dateStyle: 'short', timeStyle: 'short' }) : 'KEINE');
 let fehler = 0;
@@ -36,5 +36,26 @@ pruef('Kaputtes Datum → keine',
   f(erinnerungFuerTermin('16.08.2026', '10:00', jetzt)), 'KEINE');
 pruef('Kaputte Uhrzeit → keine',
   f(erinnerungFuerTermin('2026-08-20', 'abends', jetzt)), 'KEINE');
+
+
+console.log('\n--- Zeitraum eines Termins (für den Gerätekalender) ---');
+const z = (e: { date: string; time?: string; endTime?: string }) => {
+  const r = zeitraum(e);
+  const t = (d: Date) => d.toLocaleString('de-AT', { dateStyle: 'short', timeStyle: 'short' });
+  return `${t(r.start)} bis ${t(r.ende)}${r.ganztaegig ? ' (ganztägig)' : ''}`;
+};
+
+pruef('ohne Uhrzeit → ganztägig, bis zum Folgetag',
+  z({ date: '2026-08-20' }), '20.08.26, 00:00 bis 21.08.26, 00:00 (ganztägig)');
+pruef('mit Uhrzeit, ohne Ende → 60 Minuten',
+  z({ date: '2026-08-20', time: '14:30' }), '20.08.26, 14:30 bis 20.08.26, 15:30');
+pruef('mit Ende → genau so lang',
+  z({ date: '2026-08-20', time: '09:00', endTime: '11:45' }), '20.08.26, 09:00 bis 20.08.26, 11:45');
+pruef('Ende vor Beginn → geht über Mitternacht',
+  z({ date: '2026-08-20', time: '22:00', endTime: '01:30' }), '20.08.26, 22:00 bis 21.08.26, 01:30');
+pruef('Ende gleich Beginn → ein voller Tag später, nicht null Minuten',
+  z({ date: '2026-08-20', time: '12:00', endTime: '12:00' }), '20.08.26, 12:00 bis 21.08.26, 12:00');
+pruef('23:45 ohne Ende → Standarddauer schiebt über Mitternacht',
+  z({ date: '2026-08-20', time: '23:45' }), '20.08.26, 23:45 bis 21.08.26, 00:45');
 
 console.log(fehler === 0 ? '\nAlle Prüfungen bestanden.' : `\n${fehler} Prüfung(en) fehlgeschlagen.`);

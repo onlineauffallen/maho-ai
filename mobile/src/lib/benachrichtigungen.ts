@@ -12,7 +12,7 @@ import {
   erinnerungFuerTermin,
   erinnerungFuerWiedervorlage,
   VORLAUF_MINUTEN,
-} from './erinnerungsZeit';
+} from './zeitrechnung';
 
 /**
  * iOS erlaubt 64 gleichzeitig vorgemerkte lokale Benachrichtigungen pro App.
