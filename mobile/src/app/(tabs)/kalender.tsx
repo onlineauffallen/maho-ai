@@ -43,7 +43,10 @@ export default function KalenderScreen() {
       id: e.id, titel: e.title, datum: e.date, zeit: e.time, art: 'termin',
     }));
     const ausAufgaben: Eintrag[] = todos
-      .filter((t) => t.due && !t.done && !t.eventId)
+      // Auf die Existenz des Termins prüfen, nicht auf das Vorhandensein des
+      // Feldes: sonst verschwindet eine fällige Aufgabe für immer aus dem
+      // Kalender, sobald ihr Termin gelöscht wurde.
+      .filter((t) => t.due && !t.done && !events.some((e) => e.id === t.eventId))
       .map((t) => ({ id: t.id, titel: t.text, datum: t.due!, art: 'aufgabe' }));
     return [...ausTerminen, ...ausAufgaben].sort(
       (a, b) => a.datum.localeCompare(b.datum) || (a.zeit ?? '').localeCompare(b.zeit ?? '')

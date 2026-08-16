@@ -30,6 +30,7 @@ type TodoState = {
   updateTodo: (id: string, patch: Partial<Omit<Todo, 'id' | 'createdAt'>>) => Todo | undefined;
   toggleDone: (id: string) => void;
   removeTodo: (id: string) => void;
+  leeren: () => void;
 };
 
 export const useTodoStore = create<TodoState>()(
@@ -68,6 +69,8 @@ export const useTodoStore = create<TodoState>()(
         })),
 
       removeTodo: (id) => set((s) => ({ todos: s.todos.filter((t) => t.id !== id) })),
+
+      leeren: () => set({ todos: [] }),
     }),
     {
       name: 'maho-todos',

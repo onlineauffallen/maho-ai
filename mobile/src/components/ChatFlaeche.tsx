@@ -25,6 +25,16 @@ type Props = {
   vorschlaege?: string[];
   platzhalter?: string;
   fussZeile?: React.ReactNode;
+  /**
+   * Fehler stehen bewusst neben dem Verlauf und nicht darin. Vorher landeten
+   * sie als Assistentennachricht im gespeicherten Verlauf und gingen beim
+   * nächsten Aufruf als Kontext ans Modell zurück.
+   */
+  fehler?: string;
+  onWiederholen?: () => void;
+  onAbbrechen?: () => void;
+  /** Rechts in der Kopfzeile, etwa der Weg zu den Einstellungen. */
+  kopfAktion?: React.ReactNode;
 };
 
 /** Gemeinsame Chatoberfläche für das Kennenlernen und den Alltag. */
@@ -38,6 +48,10 @@ export function ChatFlaeche({
   vorschlaege = [],
   platzhalter = 'Schreib Maho…',
   fussZeile,
+  fehler,
+  onWiederholen,
+  onAbbrechen,
+  kopfAktion,
 }: Props) {
   const scrollRef = useRef<ScrollView>(null);
 
@@ -48,7 +62,12 @@ export function ChatFlaeche({
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
       >
-        {titel ? <Text style={styles.titel}>{titel}</Text> : null}
+        {(titel || kopfAktion) && (
+          <View style={styles.kopfZeile}>
+            <Text style={styles.titel}>{titel ?? ''}</Text>
+            {kopfAktion}
+          </View>
+        )}
 
         <ScrollView
           ref={scrollRef}
@@ -73,6 +92,17 @@ export function ChatFlaeche({
               <View style={styles.blaseMaho}>
                 <ActivityIndicator size="small" color={farben.gedaempft} />
               </View>
+            </View>
+          )}
+
+          {!!fehler && (
+            <View style={styles.fehlerFeld}>
+              <Text style={styles.fehlerText}>{fehler}</Text>
+              {!!onWiederholen && (
+                <Pressable onPress={onWiederholen} style={styles.fehlerKnopf}>
+                  <Text style={styles.fehlerKnopfText}>Nochmal versuchen</Text>
+                </Pressable>
+              )}
             </View>
           )}
         </ScrollView>
@@ -104,17 +134,30 @@ export function ChatFlaeche({
             returnKeyType="send"
             multiline
           />
-          <Pressable
-            onPress={() => onSenden(eingabe)}
-            disabled={busy || !eingabe.trim()}
-            style={({ pressed }) => [
-              styles.knopf,
-              (busy || !eingabe.trim()) && { opacity: 0.4 },
-              pressed && { opacity: 0.7 },
-            ]}
-          >
-            <Text style={styles.knopfText}>Senden</Text>
-          </Pressable>
+          {busy && onAbbrechen ? (
+            <Pressable
+              onPress={onAbbrechen}
+              style={({ pressed }) => [styles.knopf, styles.knopfStopp, pressed && { opacity: 0.7 }]}
+              accessibilityRole="button"
+              accessibilityLabel="Antwort abbrechen"
+            >
+              <Text style={styles.knopfText}>Stopp</Text>
+            </Pressable>
+          ) : (
+            <Pressable
+              onPress={() => onSenden(eingabe)}
+              disabled={busy || !eingabe.trim()}
+              style={({ pressed }) => [
+                styles.knopf,
+                (busy || !eingabe.trim()) && { opacity: 0.4 },
+                pressed && { opacity: 0.7 },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="Senden"
+            >
+              <Text style={styles.knopfText}>Senden</Text>
+            </Pressable>
+          )}
         </View>
 
         {fussZeile}
@@ -126,7 +169,13 @@ export function ChatFlaeche({
 const styles = StyleSheet.create({
   sicher: { flex: 1, backgroundColor: farben.grund },
   flaeche: { flex: 1, paddingHorizontal: abstand.l },
-  titel: { ...schrift.titel, color: farben.text, paddingTop: abstand.s },
+  kopfZeile: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: abstand.s,
+  },
+  titel: { ...schrift.titel, color: farben.text },
   verlauf: { flex: 1 },
   zeileLinks: { alignItems: 'flex-start' },
   zeileRechts: { alignItems: 'flex-end' },
@@ -187,4 +236,23 @@ const styles = StyleSheet.create({
     paddingVertical: abstand.m,
   },
   knopfText: { color: '#fff', fontWeight: '600' },
+  knopfStopp: { backgroundColor: farben.gedaempft },
+  fehlerFeld: {
+    borderWidth: 1,
+    borderColor: '#fecaca',
+    backgroundColor: '#fef2f2',
+    borderRadius: radius.m,
+    padding: abstand.m,
+    gap: abstand.s,
+    alignItems: 'flex-start',
+  },
+  fehlerText: { color: farben.warnung, fontSize: 14 },
+  fehlerKnopf: {
+    borderWidth: 1,
+    borderColor: '#fecaca',
+    borderRadius: radius.s,
+    paddingHorizontal: abstand.m,
+    paddingVertical: abstand.s,
+  },
+  fehlerKnopfText: { color: farben.warnung, fontWeight: '600', fontSize: 14 },
 });

@@ -5,7 +5,10 @@ import { appStorage } from './storage';
 
 export type ChatMessage = { sender: 'user' | 'maho'; text: string; actions?: string[] };
 
-const MAX_MESSAGES = 50;
+// 50 war zu knapp: nach zwei Wochen Nutzung fehlte der Anfang, ohne jeden
+// Hinweis. Der Verlauf, der an das Modell geht, ist davon unabhängig und
+// bleibt bei den letzten zehn Nachrichten.
+const MAX_MESSAGES = 200;
 
 const initialMessages: ChatMessage[] = [
   { sender: 'maho', text: 'Hi! Wie kann ich dir helfen?' },
@@ -14,6 +17,7 @@ const initialMessages: ChatMessage[] = [
 type ChatState = {
   messages: ChatMessage[];
   addMessage: (message: ChatMessage) => void;
+  leeren: () => void;
 };
 
 export const useChatStore = create<ChatState>()(
@@ -22,6 +26,7 @@ export const useChatStore = create<ChatState>()(
       messages: initialMessages,
       addMessage: (message) =>
         set((s) => ({ messages: [...s.messages, message].slice(-MAX_MESSAGES) })),
+      leeren: () => set({ messages: initialMessages }),
     }),
     { name: 'maho-chat', storage: appStorage }
   )

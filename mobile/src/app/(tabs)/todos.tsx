@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import {
+  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -66,8 +67,24 @@ export default function TodosScreen() {
   }
 
   function loeschen(todo: Todo) {
-    if (todo.eventId) removeEvent(todo.eventId); // sonst bleibt eine Leiche im Kalender
-    removeTodo(todo.id);
+    const hatTermin = !!todo.eventId && events.some((e) => e.id === todo.eventId);
+    Alert.alert(
+      'Aufgabe löschen?',
+      hatTermin
+        ? `„${todo.text}" wird gelöscht, samt dem Termin im Kalender.`
+        : `„${todo.text}" wird gelöscht.`,
+      [
+        { text: 'Abbrechen', style: 'cancel' },
+        {
+          text: 'Löschen',
+          style: 'destructive',
+          onPress: () => {
+            if (todo.eventId) removeEvent(todo.eventId); // sonst bleibt eine Leiche im Kalender
+            removeTodo(todo.id);
+          },
+        },
+      ]
+    );
   }
 
   const gruppen = useMemo(() => {
@@ -163,7 +180,13 @@ export default function TodosScreen() {
               const imKalender = !!todo.eventId && events.some((e) => e.id === todo.eventId);
               return (
                 <View key={todo.id} style={styles.zeile}>
-                  <Pressable onPress={() => toggleDone(todo.id)} style={styles.hakenFeld} hitSlop={8}>
+                  <Pressable
+                    onPress={() => toggleDone(todo.id)}
+                    style={styles.hakenFeld}
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: todo.done }}
+                    accessibilityLabel={todo.text}
+                  >
                     <Text style={styles.haken}>{todo.done ? '☑' : '☐'}</Text>
                   </Pressable>
 
@@ -177,10 +200,23 @@ export default function TodosScreen() {
                     )}
                   </View>
 
-                  <Pressable onPress={() => inKalender(todo)} hitSlop={8} style={styles.aktion}>
+                  {/* Kein hitSlop mehr: die Flächen der beiden Knöpfe haben sich
+                      dadurch überlappt, ein Zielfehler löschte unwiderruflich.
+                      Jetzt echte 44pt breite Flächen mit sichtbarem Abstand. */}
+                  <Pressable
+                    onPress={() => inKalender(todo)}
+                    style={styles.aktion}
+                    accessibilityRole="button"
+                    accessibilityLabel={imKalender ? `Termin von ${todo.text} ändern` : `${todo.text} in den Kalender`}
+                  >
                     <Text style={{ fontSize: 16, opacity: imKalender ? 1 : 0.4 }}>📅</Text>
                   </Pressable>
-                  <Pressable onPress={() => loeschen(todo)} hitSlop={8} style={styles.aktion}>
+                  <Pressable
+                    onPress={() => loeschen(todo)}
+                    style={[styles.aktion, styles.aktionLoeschen]}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${todo.text} löschen`}
+                  >
                     <Text style={{ color: farben.warnung, fontSize: 16 }}>✕</Text>
                   </Pressable>
                 </View>
@@ -236,12 +272,13 @@ const styles = StyleSheet.create({
   abschnitt: { ...schrift.abschnitt, color: farben.gedaempft },
   abschnittZahl: { fontWeight: '400', color: farben.schwach },
   zeile: { flexDirection: 'row', alignItems: 'center', gap: abstand.s, paddingVertical: abstand.s, borderBottomWidth: 1, borderBottomColor: farben.rand },
-  hakenFeld: { width: 28 },
+  hakenFeld: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   haken: { fontSize: 20, color: farben.akzent },
   aufgabe: { fontSize: 16, color: farben.text },
   erledigt: { textDecorationLine: 'line-through', color: farben.schwach },
   faellig: { fontSize: 12, color: farben.gedaempft, marginTop: 2 },
   ueberfaellig: { color: farben.warnung, fontWeight: '600' },
-  aktion: { paddingHorizontal: abstand.xs },
+  aktion: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  aktionLoeschen: { marginLeft: abstand.xs },
   leer: { color: farben.schwach },
 });

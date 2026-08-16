@@ -3,8 +3,13 @@ import { useEffect, useState } from 'react';
 import { useProfileStore } from './profileStore';
 import { useTodoStore } from './todoStore';
 import { useCalendarStore } from './calendarStore';
+import { useMemoryStore } from './memory';
+import { useChatStore } from './chatStore';
 
-const stores = [useProfileStore, useTodoStore, useCalendarStore];
+// Gedächtnis und Chatverlauf gehören zwingend dazu: schreibt der Nutzer,
+// bevor das Gedächtnis gelesen ist, wertet Maho gegen einen leeren Stand aus
+// und überschreibt anschließend alles, was er je gelernt hat.
+const stores = [useProfileStore, useTodoStore, useCalendarStore, useMemoryStore, useChatStore];
 
 const alleFertig = () => stores.every((s) => s.persist.hasHydrated());
 

@@ -5,10 +5,32 @@
 import { useCalendarStore } from '@/lib/calendarStore';
 import { useTodoStore } from '@/lib/todoStore';
 import { useProfileStore, resolveCategory, MAX_CATEGORIES } from '@/lib/profileStore';
-import { today } from '@/lib/ids';
+import { alsDatum, today } from '@/lib/ids';
 
 /** Obergrenze für list_state. Das Ergebnis landet im Prompt und kostet pro Runde. */
 const LIST_LIMIT = 50;
+
+/**
+ * Datum und Uhrzeit werden überall als Zeichenkette verglichen. Ein Termin mit
+ * "16.08.2026" oder leerem Datum wäre in jeder Ansicht unsichtbar und ließe
+ * sich auch nicht mehr löschen, weil er in keiner Liste auftaucht. Deshalb
+ * lieber ablehnen und das Modell nachbessern lassen.
+ */
+function istDatum(wert: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(wert)) return false;
+  const d = new Date(`${wert}T12:00:00`);
+  return !Number.isNaN(d.getTime()) && wert === alsDatum(d);
+}
+
+function istUhrzeit(wert: string): boolean {
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(wert);
+}
+
+const FALSCHES_DATUM = (wert: string) =>
+  `Ungültiges Datum "${wert}". Erlaubt ist ausschließlich das Format JJJJ-MM-TT, zum Beispiel ${today()}. Rechne relative Angaben wie "morgen" selbst aus und ruf das Werkzeug erneut auf.`;
+
+const FALSCHE_ZEIT = (wert: string) =>
+  `Ungültige Uhrzeit "${wert}". Erlaubt ist ausschließlich HH:MM im 24-Stunden-Format, zum Beispiel 09:00 oder 14:30.`;
 
 /**
  * Die Definitionen hängen vom Profil ab (bekannte Kategorien), deshalb eine
@@ -146,26 +168,37 @@ export function executeTool(name: string, args: Record<string, unknown>): { resu
 
   switch (name) {
     case 'create_calendar_event': {
-      const ev = cal.addEvent({
-        title: String(args.title ?? ''),
-        date: String(args.date ?? ''),
-        time: args.time ? String(args.time) : undefined,
-      });
+      const datum = String(args.date ?? '');
+      if (!istDatum(datum)) return { result: FALSCHES_DATUM(datum) };
+      const zeit = args.time ? String(args.time) : undefined;
+      if (zeit && !istUhrzeit(zeit)) return { result: FALSCHE_ZEIT(zeit) };
+
+      const ev = cal.addEvent({ title: String(args.title ?? ''), date: datum, time: zeit });
       return {
         result: `Termin angelegt: ${JSON.stringify(ev)}`,
         action: { label: `📅 Termin angelegt: ${ev.title} am ${ev.date}${ev.time ? ', ' + ev.time : ''}` },
       };
     }
     case 'delete_calendar_event': {
-      cal.removeEvent(String(args.id));
+      // Erst prüfen, dann melden. Vorher kam auch bei unbekannter ID ein
+      // "Termin gelöscht", und Maho hat dem Nutzer etwas bestätigt, das nie
+      // stattgefunden hat.
+      const id = String(args.id);
+      if (!cal.events.some((e) => e.id === id)) {
+        return { result: 'Kein Termin mit dieser ID. Hol dir den aktuellen Stand mit list_state.' };
+      }
+      cal.removeEvent(id);
       return { result: 'Termin gelöscht.', action: { label: '📅 Termin gelöscht' } };
     }
     case 'add_todo': {
+      const faellig = args.due ? String(args.due) : undefined;
+      if (faellig && !istDatum(faellig)) return { result: FALSCHES_DATUM(faellig) };
+
       const category = resolveCategory(args.category ? String(args.category) : undefined);
       const t = todo.addTodo({
         text: String(args.text ?? ''),
         category,
-        due: args.due ? String(args.due) : undefined,
+        due: faellig,
       });
       const zusatz = [t.category, t.due && `fällig ${t.due}`].filter(Boolean).join(', ');
       return {
@@ -177,7 +210,11 @@ export function executeTool(name: string, args: Record<string, unknown>): { resu
       const patch: Record<string, unknown> = {};
       if (args.text !== undefined) patch.text = String(args.text);
       if (args.category !== undefined) patch.category = resolveCategory(String(args.category));
-      if (args.due !== undefined) patch.due = String(args.due) || undefined;
+      if (args.due !== undefined) {
+        const neu = String(args.due);
+        if (neu && !istDatum(neu)) return { result: FALSCHES_DATUM(neu) };
+        patch.due = neu || undefined;
+      }
       const t = todo.updateTodo(String(args.id), patch);
       if (!t) return { result: 'Keine Aufgabe mit dieser ID gefunden.' };
       return {
@@ -196,23 +233,25 @@ export function executeTool(name: string, args: Record<string, unknown>): { resu
             'Diese Aufgabe hat kein Datum. Frag den Nutzer nach einem Datum und ruf schedule_todo mit date erneut auf.',
         };
       }
+      if (!istDatum(date)) return { result: FALSCHES_DATUM(date) };
+      const zeit = args.time ? String(args.time) : undefined;
+      if (zeit && !istUhrzeit(zeit)) return { result: FALSCHE_ZEIT(zeit) };
 
       // Schon verknüpft: bestehenden Termin verschieben statt einen zweiten anlegen.
       if (t.eventId && cal.events.some((e) => e.id === t.eventId)) {
-        cal.updateEvent(t.eventId, { date, time: args.time ? String(args.time) : undefined });
+        // Uhrzeit nur anfassen, wenn eine mitkam. Vorher löschte ein reines
+        // "schieb das auf Freitag" die bestehende Uhrzeit, weil time: undefined
+        // im Patch den alten Wert überschrieben hat.
+        cal.updateEvent(t.eventId, zeit ? { date, time: zeit } : { date });
         todo.updateTodo(t.id, { due: date });
+        const alt = cal.events.find((e) => e.id === t.eventId);
         return {
-          result: `Termin verschoben auf ${date}.`,
+          result: `Termin verschoben auf ${date}${zeit ?? alt?.time ? `, ${zeit ?? alt?.time}` : ''}.`,
           action: { label: `📅 Termin verschoben: ${t.text} am ${date}` },
         };
       }
 
-      const ev = cal.addEvent({
-        title: t.text,
-        date,
-        time: args.time ? String(args.time) : undefined,
-        todoId: t.id,
-      });
+      const ev = cal.addEvent({ title: t.text, date, time: zeit, todoId: t.id });
       todo.updateTodo(t.id, { eventId: ev.id, due: date });
       return {
         result: `Aufgabe in den Kalender geschickt: ${JSON.stringify(ev)}`,
@@ -220,15 +259,24 @@ export function executeTool(name: string, args: Record<string, unknown>): { resu
       };
     }
     case 'complete_todo': {
-      todo.toggleDone(String(args.id));
-      return { result: 'Todo-Status geändert.', action: { label: '📝 Todo abgehakt' } };
+      const t = todo.todos.find((x) => x.id === String(args.id));
+      if (!t) return { result: 'Keine Aufgabe mit dieser ID. Hol dir den aktuellen Stand mit list_state.' };
+      todo.toggleDone(t.id);
+      // Das Tool ist ein Umschalter, also darf das Etikett nicht immer
+      // "abgehakt" behaupten.
+      const jetztErledigt = !t.done;
+      return {
+        result: jetztErledigt ? 'Aufgabe abgehakt.' : 'Aufgabe wieder geöffnet.',
+        action: { label: jetztErledigt ? `📝 Abgehakt: ${t.text}` : `📝 Wieder offen: ${t.text}` },
+      };
     }
     case 'delete_todo': {
       // Hängt ein Termin daran, verschwindet der mit. Sonst bleibt eine Leiche im Kalender.
       const t = todo.todos.find((x) => x.id === String(args.id));
-      if (t?.eventId) cal.removeEvent(t.eventId);
-      todo.removeTodo(String(args.id));
-      return { result: 'Todo gelöscht.', action: { label: '📝 Todo gelöscht' } };
+      if (!t) return { result: 'Keine Aufgabe mit dieser ID. Hol dir den aktuellen Stand mit list_state.' };
+      if (t.eventId) cal.removeEvent(t.eventId);
+      todo.removeTodo(t.id);
+      return { result: 'Todo gelöscht.', action: { label: `📝 Gelöscht: ${t.text}` } };
     }
     case 'list_state': {
       // Nicht der komplette Bestand: das Ergebnis geht als Text zurück ins Modell

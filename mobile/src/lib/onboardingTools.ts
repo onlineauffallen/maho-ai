@@ -98,12 +98,19 @@ export function executeOnboardingTool(
     }
 
     case 'finish_onboarding': {
-      const stand = useProfileStore.getState();
-      if (!stand.name.trim()) {
-        return { result: 'Noch nicht möglich: der Name fehlt. Frag zuerst danach.' };
-      }
-      profil.setOnboardingDone(true);
-      return { result: 'Onboarding abgeschlossen.', action: { label: '✅ Kennenlernen abgeschlossen' } };
+      // Kein Namenszwang mehr. Vorher hing hier jeder fest, der seinen Namen
+      // nicht nennen wollte: das Tool verweigerte, das Modell fragte erneut,
+      // und der Nutzer kam nie in die App, die er gerade geladen hatte.
+      //
+      // Und nicht onboardingDone setzen, sondern nur die Zusammenfassung
+      // freigeben. Sonst leitet die Weiche im Layout mitten in der
+      // Agenten-Schleife um und die Abschlussnachricht sieht niemand.
+      profil.setSummaryReady(true);
+      return {
+        result:
+          'Kennenlernen beendet. Dem Nutzer wird gleich eine Übersicht des Gemerkten angezeigt, du musst sie nicht wiederholen.',
+        action: { label: '✅ Kennenlernen abgeschlossen' },
+      };
     }
 
     default:

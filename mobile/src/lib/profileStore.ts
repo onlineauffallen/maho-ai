@@ -25,12 +25,20 @@ type ProfileState = {
   /** Kategorien für Aufgaben, z. B. "Online Auffallen", "Privat". */
   categories: string[];
   onboardingDone: boolean;
+  /**
+   * Maho hat das Kennenlernen für beendet erklärt, der Nutzer hat die
+   * Zusammenfassung aber noch nicht gesehen. Zwei getrennte Zustände, weil die
+   * Weiche im Layout sonst sofort umleitet und die Zusammenfassung auf einem
+   * Screen landet, den es in dem Moment nicht mehr gibt.
+   */
+  summaryReady: boolean;
 
   setName: (name: string) => void;
   setBasics: (text: string) => { ok: boolean; overflow: number };
   addCategory: (name: string) => string | undefined;
   renameCategory: (from: string, to: string) => void;
   removeCategory: (name: string) => void;
+  setSummaryReady: (bereit: boolean) => void;
   setOnboardingDone: (done: boolean) => void;
 };
 
@@ -41,6 +49,7 @@ export const useProfileStore = create<ProfileState>()(
       basics: '',
       categories: [],
       onboardingDone: false,
+      summaryReady: false,
 
       setName: (name) => set({ name: name.trim() }),
 
@@ -72,12 +81,31 @@ export const useProfileStore = create<ProfileState>()(
       removeCategory: (name) =>
         set((s) => ({ categories: s.categories.filter((c) => c !== name) })),
 
+      setSummaryReady: (bereit) => set({ summaryReady: bereit }),
       setOnboardingDone: (done) => set({ onboardingDone: done }),
     }),
     {
       name: 'maho-profile',
       storage: appStorage,
-      version: 1,
+      version: 2,
+      /**
+       * Ohne migrate wirft zustand bei jedem Versionssprung den kompletten
+       * gespeicherten Zustand weg und der Nutzer sitzt wieder im Kennenlernen.
+       * Deshalb hier auch dann eine Funktion, wenn sie nur Felder ergänzt.
+       */
+      migrate: (persisted, version) => {
+        const s = (persisted ?? {}) as Partial<ProfileState>;
+        return {
+          ...s,
+          name: s.name ?? '',
+          basics: s.basics ?? '',
+          categories: s.categories ?? [],
+          onboardingDone: s.onboardingDone ?? false,
+          // v1 kannte den Zwischenschritt nicht: wer damals fertig war, ist es
+          // weiterhin und bekommt die Zusammenfassung nicht nachgereicht.
+          summaryReady: version < 2 ? false : (s.summaryReady ?? false),
+        } as ProfileState;
+      },
     }
   )
 );

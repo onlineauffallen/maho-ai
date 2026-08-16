@@ -28,6 +28,7 @@ type CalendarState = {
   removeEvent: (id: string) => void;
   setView: (view: CalendarView) => void;
   setSelectedDate: (date: string) => void;
+  leeren: () => void;
 };
 
 export const useCalendarStore = create<CalendarState>()(
@@ -53,6 +54,8 @@ export const useCalendarStore = create<CalendarState>()(
 
       setView: (view) => set({ view }),
       setSelectedDate: (date) => set({ selectedDate: date }),
+
+      leeren: () => set({ events: [] }),
     }),
     {
       name: 'maho-calendar',
