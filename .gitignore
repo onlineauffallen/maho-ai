@@ -32,6 +32,8 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# Die Beispieldatei gehört ins Repo, sie enthält nur Namen, keine Werte.
+!.env.example
 
 # vercel
 .vercel
