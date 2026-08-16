@@ -5,7 +5,9 @@
 import { useCalendarStore } from '@/lib/calendarStore';
 import { useTodoStore } from '@/lib/todoStore';
 import { useProfileStore, resolveCategory, MAX_CATEGORIES } from '@/lib/profileStore';
-import { alsDatum, today } from '@/lib/ids';
+import { useFollowupStore } from '@/lib/followupStore';
+import type { Vorschlag, VorschlagsArt } from '@/lib/vorschlaege';
+import { alsDatum, newId, today } from '@/lib/ids';
 
 /** Obergrenze für list_state. Das Ergebnis landet im Prompt und kostet pro Runde. */
 const LIST_LIMIT = 50;
@@ -150,9 +152,54 @@ export function getToolDefinitions() {
     {
       type: 'function',
       function: {
+        name: 'vorschlagen',
+        description:
+          'Bietet dem Nutzer an, aus dem Gespräch etwas zu machen. Legt NICHTS an, sondern zeigt ihm eine Karte mit einem Knopf. Genau dafür bist du da: wenn im Gespräch etwas auftaucht, das sonst untergeht, biete es an, statt darauf zu warten, dass er dich darum bittet. Höchstens ein Vorschlag pro Antwort.',
+        parameters: {
+          type: 'object',
+          properties: {
+            art: {
+              type: 'string',
+              enum: ['termin', 'aufgabe', 'wiedervorlage'],
+              description:
+                'termin: hat einen festen Zeitpunkt. aufgabe: muss erledigt werden, mit oder ohne Frist. wiedervorlage: es gibt nichts zu tun, ihr solltet nur später nochmal darüber reden.',
+            },
+            titel: { type: 'string', description: 'Kurz und aus Sicht des Nutzers formuliert.' },
+            datum: { type: 'string', description: 'JJJJ-MM-TT. Bei Wiedervorlagen dein Vorschlag, wann ihr das Thema nochmal aufgreift.' },
+            zeit: { type: 'string', description: 'HH:MM, nur bei Terminen und nur wenn eine Uhrzeit im Gespräch vorkam.' },
+            kategorie: { type: 'string', description: `Nur bei Aufgaben. ${known}` },
+            anlass: {
+              type: 'string',
+              description: 'Ein halber Satz, woran du das festmachst, z. B. "Ihr habt über den Steuerberater geredet".',
+            },
+          },
+          required: ['art', 'titel'],
+        },
+      },
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'add_followup',
+        description:
+          'Legt direkt eine Wiedervorlage an, ohne Nachfrage. Nur wenn der Nutzer es ausdrücklich sagt ("erinnere mich in drei Tagen nochmal daran"). Sonst nimm vorschlagen.',
+        parameters: {
+          type: 'object',
+          properties: {
+            thema: { type: 'string' },
+            datum: { type: 'string', description: 'JJJJ-MM-TT' },
+            kontext: { type: 'string', description: 'Ein Satz, damit du das Gespräch später sinnvoll wieder aufnehmen kannst.' },
+          },
+          required: ['thema', 'datum'],
+        },
+      },
+    },
+    {
+      type: 'function',
+      function: {
         name: 'list_state',
         description:
-          'Liest alle aktuellen Termine, Todos (inkl. IDs, Kategorien, Fälligkeiten) und die bekannten Kategorien.',
+          'Liest alle aktuellen Termine, Todos (inkl. IDs, Kategorien, Fälligkeiten), offene Wiedervorlagen und die bekannten Kategorien.',
         parameters: { type: 'object', properties: {} },
       },
     },
@@ -161,8 +208,15 @@ export function getToolDefinitions() {
 
 export type ToolAction = { label: string };
 
+export type ToolErgebnis = {
+  result: string;
+  action?: ToolAction;
+  /** Nur bei "vorschlagen": wird als Karte gezeigt und erst auf Tipp ausgeführt. */
+  vorschlag?: Vorschlag;
+};
+
 /** Führt einen Tool-Call gegen die Stores aus. Gibt Ergebnis (für die KI) und Label (für die UI) zurück. */
-export function executeTool(name: string, args: Record<string, unknown>): { result: string; action?: ToolAction } {
+export function executeTool(name: string, args: Record<string, unknown>): ToolErgebnis {
   const cal = useCalendarStore.getState();
   const todo = useTodoStore.getState();
 
@@ -278,6 +332,48 @@ export function executeTool(name: string, args: Record<string, unknown>): { resu
       todo.removeTodo(t.id);
       return { result: 'Todo gelöscht.', action: { label: `📝 Gelöscht: ${t.text}` } };
     }
+    case 'vorschlagen': {
+      const art = String(args.art ?? '') as VorschlagsArt;
+      if (!['termin', 'aufgabe', 'wiedervorlage'].includes(art)) {
+        return { result: 'Ungültige Art. Erlaubt sind termin, aufgabe oder wiedervorlage.' };
+      }
+      const datum = args.datum ? String(args.datum) : undefined;
+      if (datum && !istDatum(datum)) return { result: FALSCHES_DATUM(datum) };
+      const zeit = args.zeit ? String(args.zeit) : undefined;
+      if (zeit && !istUhrzeit(zeit)) return { result: FALSCHE_ZEIT(zeit) };
+      if (art === 'wiedervorlage' && !datum) {
+        return { result: 'Eine Wiedervorlage braucht ein Datum. Schlag selbst eines vor.' };
+      }
+
+      const vorschlag: Vorschlag = {
+        id: newId(),
+        art,
+        titel: String(args.titel ?? ''),
+        datum,
+        zeit,
+        kategorie: args.kategorie ? String(args.kategorie) : undefined,
+        anlass: args.anlass ? String(args.anlass) : undefined,
+      };
+      // Bewusst kein action-Label: es ist noch nichts passiert.
+      return {
+        result:
+          'Vorschlag wird dem Nutzer als Karte angezeigt. Er entscheidet per Tipp. Sag dazu höchstens einen kurzen Satz und stell keine weitere Frage dazu.',
+        vorschlag,
+      };
+    }
+    case 'add_followup': {
+      const datum = String(args.datum ?? '');
+      if (!istDatum(datum)) return { result: FALSCHES_DATUM(datum) };
+      const w = useFollowupStore.getState().add({
+        thema: String(args.thema ?? ''),
+        kontext: args.kontext ? String(args.kontext) : undefined,
+        faelligAm: datum,
+      });
+      return {
+        result: `Wiedervorlage angelegt: ${JSON.stringify(w)}`,
+        action: { label: `🔔 Nochmal reden am ${w.faelligAm}: ${w.thema}` },
+      };
+    }
     case 'list_state': {
       // Nicht der komplette Bestand: das Ergebnis geht als Text zurück ins Modell
       // und wird bei jeder weiteren Runde mitbezahlt. Bei einem Vieljahresnutzer
@@ -290,12 +386,18 @@ export function executeTool(name: string, args: Record<string, unknown>): { resu
       const offen = todo.todos.filter((t) => !t.done).slice(0, LIST_LIMIT);
       const erledigt = todo.todos.filter((t) => t.done).length;
 
+      const wiedervorlagen = useFollowupStore
+        .getState()
+        .wiedervorlagen.filter((w) => !w.angesprochen)
+        .slice(0, LIST_LIMIT);
+
       return {
         result: JSON.stringify({
           heute,
           kategorien: useProfileStore.getState().categories,
           events,
           todos: offen,
+          wiedervorlagen,
           hinweis: `Nur offene Aufgaben und Termine ab heute, maximal ${LIST_LIMIT} je Liste. Erledigt: ${erledigt}.`,
         }),
       };

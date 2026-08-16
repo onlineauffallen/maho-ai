@@ -15,6 +15,8 @@ import { useMemoryStore, MAX_MEMORY_CHARS } from '@/lib/memory';
 import { useChatStore } from '@/lib/chatStore';
 import { useTodoStore } from '@/lib/todoStore';
 import { useCalendarStore } from '@/lib/calendarStore';
+import { useFollowupStore } from '@/lib/followupStore';
+import { datumLesbar } from '@/lib/ids';
 import { kategorieLoeschen, kategorieUmbenennen, aufgabenIn } from '@/lib/kategorien';
 import { abstand, farben, radius, schrift } from '@/lib/theme';
 
@@ -32,6 +34,7 @@ export default function EinstellungenScreen() {
   const chat = useChatStore();
   const todos = useTodoStore();
   const kalender = useCalendarStore();
+  const followups = useFollowupStore();
 
   const [name, setName] = useState(profil.name);
   const [basics, setBasics] = useState(profil.basics);
@@ -67,6 +70,7 @@ export default function EinstellungenScreen() {
             chat.leeren();
             todos.leeren();
             kalender.leeren();
+            followups.leeren();
             profil.setName('');
             profil.setBasics('');
             for (const k of [...profil.categories]) profil.removeCategory(k);
@@ -163,6 +167,29 @@ export default function EinstellungenScreen() {
             </>
           )}
         </View>
+
+        {followups.wiedervorlagen.filter((w) => !w.angesprochen).length > 0 && (
+          <View style={styles.block}>
+            <Text style={styles.abschnitt}>WORÜBER WIR NOCHMAL REDEN</Text>
+            {followups.wiedervorlagen
+              .filter((w) => !w.angesprochen)
+              .map((w) => (
+                <View key={w.id} style={styles.gedaechtnisZeile}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.gedaechtnisText}>{w.thema}</Text>
+                    <Text style={styles.klein}>{datumLesbar(w.faelligAm)}</Text>
+                  </View>
+                  <Pressable
+                    onPress={() => followups.entfernen(w.id)}
+                    style={styles.miniKnopf}
+                    accessibilityLabel={`${w.thema} entfernen`}
+                  >
+                    <Text style={{ color: farben.warnung }}>✕</Text>
+                  </Pressable>
+                </View>
+              ))}
+          </View>
+        )}
 
         <View style={styles.block}>
           <Text style={styles.abschnitt}>BEREICHE</Text>

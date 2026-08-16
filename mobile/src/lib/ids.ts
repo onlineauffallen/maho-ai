@@ -39,6 +39,26 @@ export function plusTage(datum: string, tage: number): string {
   return alsDatum(d);
 }
 
+const WOCHENTAG = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
+
+/**
+ * Datum für Menschen: "heute", "morgen" oder "Do, 20.08.".
+ * Ein rohes 2026-08-20 in der Oberfläche ist Entwicklerausgabe.
+ */
+export function datumLesbar(datum: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(datum)) return datum;
+  const heute = today();
+  if (datum === heute) return 'heute';
+  if (datum === plusTage(heute, 1)) return 'morgen';
+  if (datum === plusTage(heute, -1)) return 'gestern';
+
+  const d = new Date(`${datum}T12:00:00`);
+  const tag = `${d.getDate()}`.padStart(2, '0');
+  const monat = `${d.getMonth() + 1}`.padStart(2, '0');
+  const jahr = d.getFullYear() === new Date().getFullYear() ? '' : `.${d.getFullYear()}`;
+  return `${WOCHENTAG[d.getDay()]}, ${tag}.${monat}.${jahr}`;
+}
+
 /** Montag der Woche, in der das Datum liegt. */
 export function wochenStart(datum: string): string {
   const d = new Date(`${datum}T12:00:00`);

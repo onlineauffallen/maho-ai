@@ -6,6 +6,8 @@ import { buildSystemPrompt } from '@/lib/promptBuilder';
 import { useMemoryStore, evaluateAndUpdateMemory } from '@/lib/memory';
 import { useChatStore } from '@/lib/chatStore';
 import { useProfileStore } from '@/lib/profileStore';
+import { useFollowupStore, faelligeWiedervorlagen } from '@/lib/followupStore';
+import { vorschlagAusfuehren } from '@/lib/vorschlaege';
 import { ChatFlaeche } from '@/components/ChatFlaeche';
 
 /** Aus dem Fehler wird ein Satz, mit dem ein Mensch etwas anfangen kann. */
@@ -30,12 +32,19 @@ export default function ChatScreen() {
   const memory = useMemoryStore((s) => s.memory);
   const messages = useChatStore((s) => s.messages);
   const addMessage = useChatStore((s) => s.addMessage);
+  const vorschlagAbschliessen = useChatStore((s) => s.vorschlagAbschliessen);
   const [eingabe, setEingabe] = useState('');
   const [busy, setBusy] = useState(false);
   const [fehler, setFehler] = useState<string>();
   // Für "Nochmal versuchen": der Text, der beim letzten Versuch nicht durchkam.
   const letzterVersuch = useRef<string>('');
   const abbruch = useRef<AbortController>(null);
+  /**
+   * Nach einer Ablehnung ein paar Wortwechsel Ruhe geben. Ein Assistent, der
+   * nach jedem "nein danke" gleich das Nächste anbietet, ist der einzige
+   * echte Fehlermodus dieser Funktion.
+   */
+  const ruheZaehler = useRef(0);
 
   async function senden(text: string, erneut = false) {
     const userText = text.trim();
@@ -52,7 +61,18 @@ export default function ChatScreen() {
     abbruch.current = controller;
 
     try {
-      const systemPrompt = buildSystemPrompt({ profil: { name, basics, categories }, memory });
+      // Nur die älteste fällige Wiedervorlage mitgeben, nicht alle: Maho soll
+      // ein Thema aufgreifen, nicht eine Liste vorlesen.
+      const { wiedervorlagen, alsAngesprochenMarkieren } = useFollowupStore.getState();
+      const dran = faelligeWiedervorlagen(wiedervorlagen)[0];
+
+      const systemPrompt = buildSystemPrompt({
+        profil: { name, basics, categories },
+        memory,
+        keineVorschlaege: ruheZaehler.current > 0,
+        faellig: dran ? [dran] : [],
+      });
+      if (ruheZaehler.current > 0) ruheZaehler.current -= 1;
 
       // Verlauf: letzte 10 Nachrichten als Kontextfenster. Beim Wiederholen die
       // eigene Nachricht ausklammern, sie geht als userInput mit.
@@ -62,13 +82,21 @@ export default function ChatScreen() {
         content: m.text,
       }));
 
-      const { text: antwort, actions } = await runMahoAgent({
+      const { text: antwort, actions, vorschlaege } = await runMahoAgent({
         systemPrompt,
         history,
         userInput: userText,
         signal: controller.signal,
       });
-      addMessage({ sender: 'maho', text: antwort, actions: actions.map((a) => a.label) });
+      addMessage({
+        sender: 'maho',
+        text: antwort,
+        actions: actions.map((a) => a.label),
+        vorschlaege: vorschlaege.length ? vorschlaege : undefined,
+      });
+
+      // Das Thema war jetzt dran, es soll nicht bei jeder Nachricht wiederkommen.
+      if (dran) alsAngesprochenMarkieren(dran.id);
 
       // Gedächtnis-Auswertung im Hintergrund, blockiert den Chat nicht
       void evaluateAndUpdateMemory(userText, antwort);
@@ -92,6 +120,15 @@ export default function ChatScreen() {
       fehler={fehler}
       onWiederholen={() => senden(letzterVersuch.current, true)}
       onAbbrechen={() => abbruch.current?.abort()}
+      onVorschlagAnnehmen={(v) => {
+        // Läuft rein lokal, kostet keinen weiteren Aufruf beim Anbieter.
+        const ergebnis = vorschlagAusfuehren(v);
+        vorschlagAbschliessen(v.id, `✓ ${ergebnis}`);
+      }}
+      onVorschlagAblehnen={(v) => {
+        vorschlagAbschliessen(v.id);
+        ruheZaehler.current = 3;
+      }}
       kopfAktion={
         <Link href="/einstellungen" asChild>
           <Pressable

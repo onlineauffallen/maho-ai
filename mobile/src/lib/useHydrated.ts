@@ -5,11 +5,19 @@ import { useTodoStore } from './todoStore';
 import { useCalendarStore } from './calendarStore';
 import { useMemoryStore } from './memory';
 import { useChatStore } from './chatStore';
+import { useFollowupStore } from './followupStore';
 
 // Gedächtnis und Chatverlauf gehören zwingend dazu: schreibt der Nutzer,
 // bevor das Gedächtnis gelesen ist, wertet Maho gegen einen leeren Stand aus
 // und überschreibt anschließend alles, was er je gelernt hat.
-const stores = [useProfileStore, useTodoStore, useCalendarStore, useMemoryStore, useChatStore];
+const stores = [
+  useProfileStore,
+  useTodoStore,
+  useCalendarStore,
+  useMemoryStore,
+  useChatStore,
+  useFollowupStore,
+];
 
 const alleFertig = () => stores.every((s) => s.persist.hasHydrated());
 

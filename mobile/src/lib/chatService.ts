@@ -1,7 +1,8 @@
 // src/lib/chatService.ts
 // Agenten-Schleife: Nachricht + Tools an die API, Tool-Calls clientseitig
 // gegen die Stores ausführen, Ergebnisse zurückgeben, bis eine Textantwort kommt.
-import { getToolDefinitions, executeTool, ToolAction } from './tools';
+import { getToolDefinitions, executeTool, type ToolAction, type ToolErgebnis } from './tools';
+import type { Vorschlag } from './vorschlaege';
 import { apiUrl } from './api';
 
 type ApiMessage = {
@@ -18,7 +19,7 @@ type ApiMessage = {
  */
 export type ToolSet = {
   definitions: () => unknown[];
-  execute: (name: string, args: Record<string, unknown>) => { result: string; action?: ToolAction };
+  execute: (name: string, args: Record<string, unknown>) => ToolErgebnis;
 };
 
 export const alltagsWerkzeuge: ToolSet = {
@@ -91,13 +92,14 @@ export async function runMahoAgent({
   toolset?: ToolSet;
   /** Zum Abbrechen durch den Nutzer. */
   signal?: AbortSignal;
-}): Promise<{ text: string; actions: ToolAction[] }> {
+}): Promise<{ text: string; actions: ToolAction[]; vorschlaege: Vorschlag[] }> {
   const messages: ApiMessage[] = [
     { role: 'system', content: systemPrompt },
     ...history,
     { role: 'user', content: userInput },
   ];
   const actions: ToolAction[] = [];
+  const vorschlaege: Vorschlag[] = [];
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     // In der letzten erlaubten Runde ohne Tools fragen. Das erzwingt eine
@@ -115,18 +117,20 @@ export async function runMahoAgent({
         } catch {
           /* leere Args */
         }
-        const { result, action } = toolset.execute(call.function.name, args);
+        const { result, action, vorschlag } = toolset.execute(call.function.name, args);
         if (action) actions.push(action);
+        if (vorschlag) vorschlaege.push(vorschlag);
         messages.push({ role: 'tool', tool_call_id: call.id, content: result });
       }
       continue; // nächste Runde: KI sieht die Tool-Ergebnisse
     }
 
-    return { text: message.content ?? '', actions };
+    return { text: message.content ?? '', actions, vorschlaege };
   }
 
   return {
     text: 'Ich habe die Aktionen ausgeführt, bin aber beim Zusammenfassen ins Limit gelaufen.',
     actions,
+    vorschlaege,
   };
 }

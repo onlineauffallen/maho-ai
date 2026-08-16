@@ -12,8 +12,18 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { abstand, farben, radius, schrift } from '@/lib/theme';
+import {
+  vorschlagBeschriftung,
+  VORSCHLAG_ZEICHEN,
+  type Vorschlag,
+} from '@/lib/vorschlaege';
 
-export type Nachricht = { sender: 'user' | 'maho'; text: string; actions?: string[] };
+export type Nachricht = {
+  sender: 'user' | 'maho';
+  text: string;
+  actions?: string[];
+  vorschlaege?: Vorschlag[];
+};
 
 type Props = {
   titel?: string;
@@ -35,6 +45,8 @@ type Props = {
   onAbbrechen?: () => void;
   /** Rechts in der Kopfzeile, etwa der Weg zu den Einstellungen. */
   kopfAktion?: React.ReactNode;
+  onVorschlagAnnehmen?: (v: Vorschlag) => void;
+  onVorschlagAblehnen?: (v: Vorschlag) => void;
 };
 
 /** Gemeinsame Chatoberfläche für das Kennenlernen und den Alltag. */
@@ -52,6 +64,8 @@ export function ChatFlaeche({
   onWiederholen,
   onAbbrechen,
   kopfAktion,
+  onVorschlagAnnehmen,
+  onVorschlagAblehnen,
 }: Props) {
   const scrollRef = useRef<ScrollView>(null);
 
@@ -84,6 +98,14 @@ export function ChatFlaeche({
                 <View key={j} style={styles.aktion}>
                   <Text style={styles.aktionText}>{a}</Text>
                 </View>
+              ))}
+              {m.vorschlaege?.map((v) => (
+                <VorschlagsKarte
+                  key={v.id}
+                  vorschlag={v}
+                  onAnnehmen={() => onVorschlagAnnehmen?.(v)}
+                  onAblehnen={() => onVorschlagAblehnen?.(v)}
+                />
               ))}
             </View>
           ))}
@@ -166,6 +188,53 @@ export function ChatFlaeche({
   );
 }
 
+/**
+ * Ein Vorschlag ist eine Karte mit Knöpfen, keine Rückfrage im Fließtext.
+ * Annehmen ist ein Tipp und kostet keinen weiteren Aufruf beim Anbieter, weil
+ * die Aktion lokal ausgeführt wird. Ablehnen ist auch ein Tipp, statt "nein
+ * danke" tippen zu müssen.
+ */
+function VorschlagsKarte({
+  vorschlag,
+  onAnnehmen,
+  onAblehnen,
+}: {
+  vorschlag: Vorschlag;
+  onAnnehmen: () => void;
+  onAblehnen: () => void;
+}) {
+  return (
+    <View style={styles.karte}>
+      {!!vorschlag.anlass && <Text style={styles.karteAnlass}>{vorschlag.anlass}</Text>}
+      <View style={styles.karteKopf}>
+        <Text style={styles.karteZeichen}>{VORSCHLAG_ZEICHEN[vorschlag.art]}</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.karteTitel}>{vorschlag.titel}</Text>
+          <Text style={styles.karteZeile}>{vorschlagBeschriftung(vorschlag)}</Text>
+        </View>
+      </View>
+      <View style={styles.karteKnoepfe}>
+        <Pressable
+          onPress={onAnnehmen}
+          style={({ pressed }) => [styles.karteJa, pressed && { opacity: 0.7 }]}
+          accessibilityRole="button"
+          accessibilityLabel={`${vorschlag.titel}: ${vorschlagBeschriftung(vorschlag)}, annehmen`}
+        >
+          <Text style={styles.karteJaText}>Passt</Text>
+        </Pressable>
+        <Pressable
+          onPress={onAblehnen}
+          style={({ pressed }) => [styles.karteNein, pressed && { opacity: 0.7 }]}
+          accessibilityRole="button"
+          accessibilityLabel="Vorschlag ablehnen"
+        >
+          <Text style={styles.karteNeinText}>Nein danke</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   sicher: { flex: 1, backgroundColor: farben.grund },
   flaeche: { flex: 1, paddingHorizontal: abstand.l },
@@ -207,6 +276,42 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   aktionText: { color: farben.gut, fontSize: 12 },
+  karte: {
+    marginTop: abstand.s,
+    borderWidth: 1,
+    borderColor: '#ddd6fe',
+    backgroundColor: farben.akzentSchwach,
+    borderRadius: radius.m,
+    padding: abstand.m,
+    gap: abstand.s,
+    maxWidth: '92%',
+  },
+  karteAnlass: { fontSize: 12, color: farben.gedaempft },
+  karteKopf: { flexDirection: 'row', gap: abstand.s, alignItems: 'flex-start' },
+  karteZeichen: { fontSize: 16 },
+  karteTitel: { fontSize: 15, fontWeight: '600', color: farben.text },
+  karteZeile: { fontSize: 13, color: farben.gedaempft, marginTop: 2 },
+  karteKnoepfe: { flexDirection: 'row', gap: abstand.s },
+  karteJa: {
+    backgroundColor: farben.akzent,
+    borderRadius: radius.s,
+    paddingHorizontal: abstand.l,
+    paddingVertical: abstand.s,
+    minHeight: 40,
+    justifyContent: 'center',
+  },
+  karteJaText: { color: '#fff', fontWeight: '600' },
+  karteNein: {
+    borderWidth: 1,
+    borderColor: farben.rand,
+    backgroundColor: farben.grund,
+    borderRadius: radius.s,
+    paddingHorizontal: abstand.m,
+    paddingVertical: abstand.s,
+    minHeight: 40,
+    justifyContent: 'center',
+  },
+  karteNeinText: { color: farben.gedaempft },
   vorschlaege: { flexDirection: 'row', flexWrap: 'wrap', gap: abstand.s, paddingBottom: abstand.s },
   chip: {
     borderWidth: 1,
