@@ -30,6 +30,8 @@ export async function evaluateAndUpdateMemory(userText: string, assistantText: s
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        // Eigener Zweck: günstigeres Modell, kürzere Antwortgrenze. Siehe route.ts.
+        purpose: 'memory',
         messages: [
           { role: 'system', content: buildMemoryEvalPrompt({ currentMemory: memory, maxChars: MAX_MEMORY_CHARS }) },
           { role: 'user', content: `User: ${userText}\nMaho: ${assistantText}` },
