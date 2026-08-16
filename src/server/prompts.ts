@@ -1,6 +1,13 @@
-// src/lib/promptBuilder.ts
-import { today } from './ids';
-import { MAX_PROFILE_CHARS, MAX_CATEGORIES } from './profileStore';
+// src/server/prompts.ts
+//
+// Prompts gehören auf den Server, nicht in die App.
+//
+// Vorher baute der Client den System-Prompt und schickte ihn mit. Wer die
+// Adresse kannte, konnte ihn also einfach ersetzen und hatte einen freien
+// Assistenten auf fremde Rechnung, mit beliebigem Auftrag. Hier kommt er aus
+// dem Server, der Client liefert nur noch Daten.
+import { today } from './zeit';
+import { MAX_PROFILE_CHARS, MAX_CATEGORIES } from './grenzen';
 
 export type ProfilFuerPrompt = {
   name: string;

@@ -2,8 +2,8 @@ import { useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { runMahoAgent, ChatFehler } from '@/lib/chatService';
-import { getOnboardingToolDefinitions, executeOnboardingTool } from '@/lib/onboardingTools';
-import { buildOnboardingPrompt, splitVorschlaege } from '@/lib/promptBuilder';
+import { executeOnboardingTool } from '@/lib/onboardingTools';
+import { splitVorschlaege } from '@/lib/vorschlagsChips';
 import { useProfileStore, MAX_PROFILE_CHARS } from '@/lib/profileStore';
 import { ChatFlaeche, type Nachricht } from '@/components/ChatFlaeche';
 import { abstand, radius, schrift, useFarben, type Farben } from '@/lib/theme';
@@ -67,21 +67,18 @@ export default function OnboardingScreen() {
       // einem Fehler davor die Denkanzeige für immer stehen.
       const { name, basics, categories } = useProfileStore.getState();
       const letzteRunde = runden + 1 >= MAX_RUNDEN;
-      const systemPrompt = buildOnboardingPrompt({
-        profil: { name, basics, categories },
-        letzteRunde,
-      });
 
-      const history = bisher.slice(0, -1).slice(-10).map((m) => ({
-        role: m.sender === 'user' ? ('user' as const) : ('assistant' as const),
-        content: m.text,
+      const verlauf = bisher.slice(0, -1).slice(-10).map((m) => ({
+        rolle: m.sender === 'user' ? ('user' as const) : ('maho' as const),
+        text: m.text,
       }));
 
       const { text: antwort, actions } = await runMahoAgent({
-        systemPrompt,
-        history,
-        userInput: userText,
-        toolset: { definitions: getOnboardingToolDefinitions, execute: executeOnboardingTool },
+        kontext: { name, basics, categories },
+        verlauf,
+        eingabe: userText,
+        letzteRunde,
+        toolset: { zweck: 'onboarding', execute: executeOnboardingTool },
         signal: controller.signal,
       });
 

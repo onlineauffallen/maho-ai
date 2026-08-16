@@ -4,8 +4,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { appStorage } from './storage';
-import { buildMemoryEvalPrompt } from './promptBuilder';
-import { apiUrl } from './api';
+import { apiUrl, zugangsKopf } from './api';
 
 export const MAX_MEMORY_CHARS = 1500;
 
@@ -47,14 +46,13 @@ async function bewerten(userText: string, assistantText: string) {
   try {
     const res = await fetch(apiUrl('/api/openai-chat'), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...zugangsKopf() },
       body: JSON.stringify({
-        // Eigener Zweck: günstigeres Modell, kürzere Antwortgrenze. Siehe route.ts.
-        purpose: 'memory',
-        messages: [
-          { role: 'system', content: buildMemoryEvalPrompt({ currentMemory: memory, maxChars: MAX_MEMORY_CHARS }) },
-          { role: 'user', content: `User: ${userText}\nMaho: ${assistantText}` },
-        ],
+        // Eigener Zweck: günstigeres Modell, kürzere Antwortgrenze, eigener
+        // Prompt. Alles davon entscheidet der Server.
+        zweck: 'memory',
+        kontext: { memory },
+        eingabe: `User: ${userText}\nMaho: ${assistantText}`,
       }),
     });
     if (!res.ok) return;

@@ -2,7 +2,6 @@ import { useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { Link } from 'expo-router';
 import { runMahoAgent, ChatFehler } from '@/lib/chatService';
-import { buildSystemPrompt } from '@/lib/promptBuilder';
 import { useMemoryStore, evaluateAndUpdateMemory } from '@/lib/memory';
 import { useChatStore } from '@/lib/chatStore';
 import { useProfileStore } from '@/lib/profileStore';
@@ -47,6 +46,8 @@ function fehlerText(e: unknown): string | undefined {
       return 'Maho braucht ungewöhnlich lange. Probier es nochmal.';
     case 'ausgelastet':
       return 'Gerade zu viel los. Probier es in ein paar Sekunden nochmal.';
+    case 'kein-zugang':
+      return 'Dieser Zugang gilt nicht mehr. Melde dich beim Betreiber.';
     default:
       return 'Da ist etwas schiefgegangen.';
   }
@@ -91,26 +92,27 @@ export default function ChatScreen() {
       const { wiedervorlagen, alsAngesprochenMarkieren } = useFollowupStore.getState();
       const dran = faelligeWiedervorlagen(wiedervorlagen)[0];
 
-      const systemPrompt = buildSystemPrompt({
-        profil: { name, basics, categories },
-        memory,
-        keineVorschlaege: ruheZaehler.current > 0,
-        faellig: dran ? [dran] : [],
-      });
       if (ruheZaehler.current > 0) ruheZaehler.current -= 1;
 
       // Verlauf: letzte 10 Nachrichten als Kontextfenster. Beim Wiederholen die
-      // eigene Nachricht ausklammern, sie geht als userInput mit.
-      const verlauf = erneut ? messages.slice(0, -1) : messages;
-      const history = verlauf.slice(-10).map((m) => ({
-        role: m.sender === 'user' ? ('user' as const) : ('assistant' as const),
-        content: m.text,
+      // eigene Nachricht ausklammern, sie geht als Eingabe mit.
+      const bisher = erneut ? messages.slice(0, -1) : messages;
+      const verlauf = bisher.slice(-10).map((m) => ({
+        rolle: m.sender === 'user' ? ('user' as const) : ('maho' as const),
+        text: m.text,
       }));
 
       const { text: antwort, actions, vorschlaege } = await runMahoAgent({
-        systemPrompt,
-        history,
-        userInput: userText,
+        kontext: {
+          name,
+          basics,
+          categories,
+          memory,
+          faellig: dran ? [{ thema: dran.thema, kontext: dran.kontext, faelligAm: dran.faelligAm }] : [],
+        },
+        verlauf,
+        eingabe: userText,
+        keineVorschlaege: ruheZaehler.current > 0,
         signal: controller.signal,
       });
       addMessage({

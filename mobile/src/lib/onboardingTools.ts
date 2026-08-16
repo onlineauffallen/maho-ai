@@ -1,54 +1,8 @@
 // src/lib/onboardingTools.ts
-// Werkzeuge für das Kennenlerngespräch. Bewusst getrennt von den Alltags-Tools
-// in tools.ts: im Onboarding soll Maho keine Termine anlegen, sondern zuhören
-// und das Profil füllen.
+// Ausführung der Kennenlern-Werkzeuge. Die Beschreibungen dazu liegen auf dem
+// Server, siehe src/server/werkzeuge.ts.
 import { useProfileStore, MAX_PROFILE_CHARS, MAX_CATEGORIES } from '@/lib/profileStore';
 import type { ToolAction } from '@/lib/tools';
-
-/**
- * Das Profil-Werkzeug gilt auch im Alltag. Vorher gab es update_profile nur im
- * Kennenlernen, und danach konnte niemand mehr etwas in die Grundeinstellungen
- * schreiben: alles Neue landete im automatischen Gedächtnis, das lief voll,
- * während das Profil bei ein paar Zeilen stehen blieb.
- */
-export const profilWerkzeug = {
-  type: 'function',
-  function: {
-    name: 'update_profile',
-    description:
-      'Speichert, was dauerhaft über den Nutzer gilt: Lebensumstände, Arbeit, Familie, feste Gewohnheiten, Vorlieben im Umgang mit dir. Ruf das auf, sobald du so etwas erfährst, auch mitten im Alltag. Übergib immer den vollständigen neuen Stand, nicht nur die Ergänzung.',
-    parameters: {
-      type: 'object',
-      properties: {
-        name: { type: 'string', description: 'Vorname oder gewünschte Anrede' },
-        basics: {
-          type: 'string',
-          description: `Was den Nutzer ausmacht: Lebensumstände, Arbeit, Familie, Ziele, Gewohnheiten. Stichpunkte, eine Zeile pro Sache, jede kurz. Maximal ${MAX_PROFILE_CHARS} Zeichen, hartes Limit. Keine Termine und keine Aufgaben, die stehen woanders.`,
-        },
-        categories: {
-          type: 'array',
-          items: { type: 'string' },
-          description: `Lebensbereiche, in denen Aufgaben anfallen, z. B. "Arbeit", "Familie", "Gesundheit" oder ein Firmenname. Lege sie an, sobald ein solcher Bereich erkennbar ist, ohne extra nachzufragen. Maximal ${MAX_CATEGORIES}.`,
-        },
-      },
-    },
-  },
-} as const;
-
-export function getOnboardingToolDefinitions() {
-  return [
-    profilWerkzeug,
-    {
-      type: 'function',
-      function: {
-        name: 'finish_onboarding',
-        description:
-          'Beendet das Kennenlernen. Erst aufrufen, wenn der Name steht und du zu mindestens zwei Themen etwas Konkretes weißt, oder wenn der Nutzer abkürzen möchte.',
-        parameters: { type: 'object', properties: {} },
-      },
-    },
-  ];
-}
 
 export function executeOnboardingTool(
   name: string,
