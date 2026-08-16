@@ -1,6 +1,9 @@
 import { useMemo, useState } from 'react';
 import {
   Alert,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -19,48 +22,34 @@ import {
 } from '@/lib/kalender';
 import { useProfileStore, MAX_CATEGORIES } from '@/lib/profileStore';
 import { datumLesbar, plusTage, today } from '@/lib/ids';
-import { abstand, farben, radius, schrift } from '@/lib/theme';
+import { abstand, radius, schrift, useFarben, type Farben } from '@/lib/theme';
+import { Zeile } from '@/components/Zeitspalte';
 
-const OHNE = 'Ohne Kategorie';
+const OHNE = 'Ohne Bereich';
+const WOCHENTAGE = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
 
-/** Fälligkeit ohne Datumswähler: die drei Fälle, die im Alltag zählen. */
-function faelligkeitsChips(): { label: string; wert: string }[] {
-  const heute = today();
-  return [
-    { label: 'Heute', wert: heute },
-    { label: 'Morgen', wert: plusTage(heute, 1) },
-    { label: 'In einer Woche', wert: plusTage(heute, 7) },
-  ];
+/** Was links in der Spalte steht: wann das fällig ist, kurz genug für die Breite. */
+function faelligKurz(due: string | undefined, heute: string): { zeit: string; zusatz?: string } {
+  if (!due) return { zeit: '–' };
+  if (due < heute) return { zeit: 'offen', zusatz: 'überfällig' };
+  if (due === heute) return { zeit: 'heute' };
+  if (due === plusTage(heute, 1)) return { zeit: 'morgen' };
+  const d = new Date(`${due}T12:00:00`);
+  return { zeit: WOCHENTAGE[d.getDay()], zusatz: `${d.getDate()}.${d.getMonth() + 1}.` };
 }
 
 export default function TodosScreen() {
+  const f = useFarben();
+  const stil = useMemo(() => stile(f), [f]);
   const { todos, addTodo, updateTodo, toggleDone, removeTodo } = useTodoStore();
   const events = useCalendarStore((s) => s.events);
   const { categories, addCategory } = useProfileStore();
 
-  const [text, setText] = useState('');
-  const [kategorie, setKategorie] = useState<string | undefined>();
-  const [due, setDue] = useState<string | undefined>();
-  const [neueKategorie, setNeueKategorie] = useState('');
-  const [neueSichtbar, setNeueSichtbar] = useState(false);
-
+  const [filter, setFilter] = useState<string>();
+  const [neuOffen, setNeuOffen] = useState(false);
+  const [erledigteZeigen, setErledigteZeigen] = useState(false);
   const heute = today();
 
-  function hinzufuegen() {
-    if (!text.trim()) return;
-    addTodo({ text: text.trim(), category: kategorie, due });
-    setText('');
-    setDue(undefined);
-  }
-
-  function kategorieAnlegen() {
-    const echt = addCategory(neueKategorie);
-    if (echt) setKategorie(echt);
-    setNeueKategorie('');
-    setNeueSichtbar(false);
-  }
-
-  /** Aufgabe in den Kalender. Sie bleibt bestehen, der Termin wird verknüpft. */
   function inKalender(todo: Todo) {
     const datum = todo.due ?? heute;
     if (todo.eventId && events.some((e) => e.id === todo.eventId)) {
@@ -77,16 +66,14 @@ export default function TodosScreen() {
     const hatTermin = !!todo.eventId && events.some((e) => e.id === todo.eventId);
     Alert.alert(
       'Aufgabe löschen?',
-      hatTermin
-        ? `„${todo.text}" wird gelöscht, samt dem Termin im Kalender.`
-        : `„${todo.text}" wird gelöscht.`,
+      hatTermin ? `„${todo.text}" wird gelöscht, samt Termin im Kalender.` : `„${todo.text}" wird gelöscht.`,
       [
         { text: 'Abbrechen', style: 'cancel' },
         {
           text: 'Löschen',
           style: 'destructive',
           onPress: () => {
-            if (todo.eventId) terminLoeschen(todo.eventId); // sonst bleibt eine Leiche im Kalender
+            if (todo.eventId) terminLoeschen(todo.eventId);
             removeTodo(todo.id);
           },
         },
@@ -94,198 +81,329 @@ export default function TodosScreen() {
     );
   }
 
+  const gefiltert = filter ? todos.filter((t) => t.category === filter) : todos;
+  const offen = gefiltert.filter((t) => !t.done);
+  const erledigt = gefiltert.filter((t) => t.done);
+
   const gruppen = useMemo(() => {
-    const map = new Map<string, Todo[]>();
-    for (const k of categories) map.set(k, []);
-    for (const t of todos) {
+    const m = new Map<string, Todo[]>();
+    for (const k of categories) m.set(k, []);
+    for (const t of offen) {
       const key = t.category && categories.includes(t.category) ? t.category : OHNE;
-      if (!map.has(key)) map.set(key, []);
-      map.get(key)!.push(t);
+      if (!m.has(key)) m.set(key, []);
+      m.get(key)!.push(t);
     }
-    for (const liste of map.values()) {
+    for (const liste of m.values()) {
       liste.sort((a, b) => {
-        if (a.done !== b.done) return a.done ? 1 : -1;
         if (a.due && b.due) return a.due.localeCompare(b.due);
         if (a.due) return -1;
         if (b.due) return 1;
         return a.createdAt.localeCompare(b.createdAt);
       });
     }
-    return [...map.entries()]
+    return [...m.entries()]
       .filter(([, l]) => l.length > 0)
       .sort(([a], [b]) => (a === OHNE ? 1 : b === OHNE ? -1 : 0));
-  }, [todos, categories]);
+  }, [offen, categories]);
 
-  return (
-    <SafeAreaView style={styles.sicher} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.inhalt} keyboardShouldPersistTaps="handled">
-        <Text style={styles.titel}>Aufgaben</Text>
+  function aufgabenZeile(todo: Todo, letzte: boolean) {
+    const { zeit, zusatz } = faelligKurz(todo.due, heute);
+    const ueberfaellig = !!todo.due && todo.due < heute && !todo.done;
+    const imKalender = !!todo.eventId && events.some((e) => e.id === todo.eventId);
 
-        <View style={styles.eingabeBlock}>
-          <View style={styles.eingabeZeile}>
-            <TextInput
-              style={styles.feld}
-              value={text}
-              onChangeText={setText}
-              placeholder="Neue Aufgabe…"
-              placeholderTextColor={farben.schwach}
-              onSubmitEditing={hinzufuegen}
-              returnKeyType="done"
-            />
-            <Pressable
-              onPress={hinzufuegen}
-              disabled={!text.trim()}
-              style={({ pressed }) => [styles.knopf, !text.trim() && { opacity: 0.4 }, pressed && { opacity: 0.7 }]}
-            >
-              <Text style={styles.knopfText}>Hinzufügen</Text>
-            </Pressable>
-          </View>
+    return (
+      <Zeile
+        key={todo.id}
+        zeit={zeit}
+        zusatz={zusatz}
+        hervorgehoben={ueberfaellig}
+        gedimmt={todo.done}
+        letzte={letzte}
+      >
+        <View style={stil.aufgabe}>
+          <Pressable
+            onPress={() => toggleDone(todo.id)}
+            style={stil.hakenFeld}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: todo.done }}
+            accessibilityLabel={todo.text}
+          >
+            <View style={[stil.kasten, todo.done && { backgroundColor: f.gut, borderColor: f.gut }]}>
+              {todo.done && <Text style={stil.haken}>✓</Text>}
+            </View>
+          </Pressable>
 
-          <View style={styles.chipZeile}>
-            {categories.map((k) => (
-              <Chip key={k} label={k} aktiv={kategorie === k} onPress={() => setKategorie(kategorie === k ? undefined : k)} />
-            ))}
-            {categories.length < MAX_CATEGORIES && (
-              <Chip label="＋" aktiv={false} onPress={() => setNeueSichtbar((s) => !s)} />
+          <View style={{ flex: 1 }}>
+            <Text style={[schrift.normal, { color: todo.done ? f.schwach : f.tinte }, todo.done && stil.durch]}>
+              {todo.text}
+            </Text>
+            {imKalender && (
+              <Text style={[schrift.winzig, { color: f.gedaempft }]}>
+                steht am {datumLesbar(todo.due ?? heute)} im Kalender
+              </Text>
             )}
           </View>
 
-          {neueSichtbar && (
-            <View style={styles.eingabeZeile}>
-              <TextInput
-                style={styles.feld}
-                value={neueKategorie}
-                onChangeText={setNeueKategorie}
-                placeholder="Name der Kategorie"
-                placeholderTextColor={farben.schwach}
-                onSubmitEditing={kategorieAnlegen}
-                returnKeyType="done"
-              />
-              <Pressable onPress={kategorieAnlegen} style={styles.knopf}>
-                <Text style={styles.knopfText}>Anlegen</Text>
-              </Pressable>
-            </View>
+          {!todo.done && (
+            <Pressable onPress={() => inKalender(todo)} style={stil.aktion} accessibilityLabel="In den Kalender">
+              <View style={[stil.miniRaster, { borderColor: imKalender ? f.weg : f.schwach }]}>
+                <View style={[stil.miniLinie, { backgroundColor: imKalender ? f.weg : f.schwach }]} />
+              </View>
+            </Pressable>
           )}
+          <Pressable onPress={() => loeschen(todo)} style={stil.aktion} accessibilityLabel="Löschen">
+            <Text style={[stil.kreuz, { color: f.schwach }]}>✕</Text>
+          </Pressable>
+        </View>
+      </Zeile>
+    );
+  }
 
-          <View style={styles.chipZeile}>
-            {faelligkeitsChips().map((f) => (
-              <Chip key={f.wert} label={f.label} aktiv={due === f.wert} onPress={() => setDue(due === f.wert ? undefined : f.wert)} />
-            ))}
+  return (
+    <SafeAreaView style={stil.sicher} edges={['top']}>
+      <View style={stil.kopfBlock}>
+        <View style={stil.titelZeile}>
+          <View>
+            <Text style={[schrift.gross, { color: f.tinte }]}>Aufgaben</Text>
+            <Text style={[schrift.klein, { color: f.schwach }]}>
+              {offen.length === 0 ? 'nichts offen' : `${offen.length} offen`}
+            </Text>
           </View>
+          <Pressable onPress={() => setNeuOffen(true)} style={stil.plusKnopf} accessibilityLabel="Neue Aufgabe">
+            <Text style={stil.plusText}>+</Text>
+          </Pressable>
         </View>
 
-        {todos.length === 0 && <Text style={styles.leer}>Keine Aufgaben. Angenehm.</Text>}
+        {categories.length > 0 && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={stil.filterZeile}>
+            <Filterchip label="Alle" aktiv={!filter} onPress={() => setFilter(undefined)} farben={f} />
+            {categories.map((k) => (
+              <Filterchip key={k} label={k} aktiv={filter === k} onPress={() => setFilter(k)} farben={f} />
+            ))}
+          </ScrollView>
+        )}
+      </View>
+
+      <ScrollView contentContainerStyle={stil.inhalt}>
+        {offen.length === 0 && (
+          <Text style={[schrift.normal, { color: f.gedaempft }]}>
+            {todos.length === 0
+              ? 'Noch nichts zu tun. Sag Maho im Gespräch, was ansteht.'
+              : 'Hier ist alles erledigt.'}
+          </Text>
+        )}
 
         {gruppen.map(([name, liste]) => (
-          <View key={name} style={{ gap: abstand.s }}>
-            <Text style={styles.abschnitt}>
-              {name.toUpperCase()}
-              <Text style={styles.abschnittZahl}>  {liste.filter((t) => !t.done).length} offen</Text>
-            </Text>
-            {liste.map((todo) => {
-              const ueberfaellig = !todo.done && todo.due && todo.due < heute;
-              const imKalender = !!todo.eventId && events.some((e) => e.id === todo.eventId);
-              return (
-                <View key={todo.id} style={styles.zeile}>
-                  <Pressable
-                    onPress={() => toggleDone(todo.id)}
-                    style={styles.hakenFeld}
-                    accessibilityRole="checkbox"
-                    accessibilityState={{ checked: todo.done }}
-                    accessibilityLabel={todo.text}
-                  >
-                    <Text style={styles.haken}>{todo.done ? '☑' : '☐'}</Text>
-                  </Pressable>
-
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.aufgabe, todo.done && styles.erledigt]}>{todo.text}</Text>
-                    {todo.due && (
-                      <Text style={[styles.faellig, ueberfaellig && styles.ueberfaellig]}>
-                        fällig {datumLesbar(todo.due)}
-                        {ueberfaellig ? ' (überfällig)' : ''}
-                      </Text>
-                    )}
-                  </View>
-
-                  {/* Kein hitSlop mehr: die Flächen der beiden Knöpfe haben sich
-                      dadurch überlappt, ein Zielfehler löschte unwiderruflich.
-                      Jetzt echte 44pt breite Flächen mit sichtbarem Abstand. */}
-                  <Pressable
-                    onPress={() => inKalender(todo)}
-                    style={styles.aktion}
-                    accessibilityRole="button"
-                    accessibilityLabel={imKalender ? `Termin von ${todo.text} ändern` : `${todo.text} in den Kalender`}
-                  >
-                    <Text style={{ fontSize: 16, opacity: imKalender ? 1 : 0.4 }}>📅</Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={() => loeschen(todo)}
-                    style={[styles.aktion, styles.aktionLoeschen]}
-                    accessibilityRole="button"
-                    accessibilityLabel={`${todo.text} löschen`}
-                  >
-                    <Text style={{ color: farben.warnung, fontSize: 16 }}>✕</Text>
-                  </Pressable>
-                </View>
-              );
-            })}
+          <View key={name}>
+            <Text style={[schrift.abschnitt, stil.abschnitt]}>{name.toUpperCase()}</Text>
+            {liste.map((t, i) => aufgabenZeile(t, i === liste.length - 1))}
           </View>
         ))}
+
+        {erledigt.length > 0 && (
+          <View>
+            <Pressable onPress={() => setErledigteZeigen((z) => !z)} style={stil.erledigtKopf}>
+              <Text style={[schrift.abschnitt, stil.abschnitt]}>
+                {erledigteZeigen ? '▾' : '▸'}  {erledigt.length} ERLEDIGT
+              </Text>
+            </Pressable>
+            {erledigteZeigen && erledigt.map((t, i) => aufgabenZeile(t, i === erledigt.length - 1))}
+          </View>
+        )}
       </ScrollView>
+
+      <NeueAufgabe
+        sichtbar={neuOffen}
+        farben={f}
+        categories={categories}
+        onAbbrechen={() => setNeuOffen(false)}
+        onAnlegen={(text, kategorie, due) => {
+          addTodo({ text, category: kategorie, due });
+          setNeuOffen(false);
+        }}
+        onNeueKategorie={(name) => addCategory(name)}
+      />
     </SafeAreaView>
   );
 }
 
-function Chip({ label, aktiv, onPress }: { label: string; aktiv: boolean; onPress: () => void }) {
+function Filterchip({
+  label, aktiv, onPress, farben: f,
+}: { label: string; aktiv: boolean; onPress: () => void; farben: Farben }) {
+  const stil = stile(f);
   return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [styles.chip, aktiv && styles.chipAktiv, pressed && { opacity: 0.7 }]}
-    >
-      <Text style={[styles.chipText, aktiv && styles.chipTextAktiv]}>{label}</Text>
+    <Pressable onPress={onPress} style={[stil.chip, aktiv && stil.chipAktiv]}>
+      <Text style={[stil.chipText, aktiv && stil.chipTextAktiv]}>{label}</Text>
     </Pressable>
   );
 }
 
-const styles = StyleSheet.create({
-  sicher: { flex: 1, backgroundColor: farben.grund },
-  inhalt: { padding: abstand.l, gap: abstand.l, paddingBottom: abstand.xl * 2 },
-  titel: { ...schrift.titel, color: farben.text },
-  eingabeBlock: { gap: abstand.s, borderBottomWidth: 1, borderBottomColor: farben.rand, paddingBottom: abstand.l },
-  eingabeZeile: { flexDirection: 'row', gap: abstand.s },
-  feld: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: farben.rand,
-    borderRadius: radius.m,
-    paddingHorizontal: abstand.m,
-    paddingVertical: abstand.s,
-    fontSize: 16,
-    color: farben.text,
-  },
-  knopf: { backgroundColor: farben.akzent, borderRadius: radius.m, paddingHorizontal: abstand.m, justifyContent: 'center' },
-  knopfText: { color: '#fff', fontWeight: '600' },
-  chipZeile: { flexDirection: 'row', flexWrap: 'wrap', gap: abstand.s },
-  chip: {
-    borderWidth: 1,
-    borderColor: farben.rand,
-    borderRadius: radius.rund,
-    paddingHorizontal: abstand.m,
-    paddingVertical: abstand.xs + 2,
-  },
-  chipAktiv: { backgroundColor: farben.akzentSchwach, borderColor: '#ddd6fe' },
-  chipText: { color: farben.gedaempft, fontSize: 14 },
-  chipTextAktiv: { color: farben.akzent, fontWeight: '600' },
-  abschnitt: { ...schrift.abschnitt, color: farben.gedaempft },
-  abschnittZahl: { fontWeight: '400', color: farben.schwach },
-  zeile: { flexDirection: 'row', alignItems: 'center', gap: abstand.s, paddingVertical: abstand.s, borderBottomWidth: 1, borderBottomColor: farben.rand },
-  hakenFeld: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  haken: { fontSize: 20, color: farben.akzent },
-  aufgabe: { fontSize: 16, color: farben.text },
-  erledigt: { textDecorationLine: 'line-through', color: farben.schwach },
-  faellig: { fontSize: 12, color: farben.gedaempft, marginTop: 2 },
-  ueberfaellig: { color: farben.warnung, fontWeight: '600' },
-  aktion: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  aktionLoeschen: { marginLeft: abstand.xs },
-  leer: { color: farben.schwach },
-});
+function NeueAufgabe({
+  sichtbar, farben: f, categories, onAbbrechen, onAnlegen, onNeueKategorie,
+}: {
+  sichtbar: boolean;
+  farben: Farben;
+  categories: string[];
+  onAbbrechen: () => void;
+  onAnlegen: (text: string, kategorie?: string, due?: string) => void;
+  onNeueKategorie: (name: string) => string | undefined;
+}) {
+  const stil = stile(f);
+  const heute = today();
+  const [text, setText] = useState('');
+  const [kategorie, setKategorie] = useState<string>();
+  const [due, setDue] = useState<string>();
+  const [neueKat, setNeueKat] = useState('');
+  const [katFeld, setKatFeld] = useState(false);
+
+  function anlegen() {
+    if (!text.trim()) return;
+    onAnlegen(text.trim(), kategorie, due);
+    setText('');
+    setDue(undefined);
+  }
+
+  const faelligkeiten = [
+    { label: 'heute', wert: heute },
+    { label: 'morgen', wert: plusTage(heute, 1) },
+    { label: 'nächste Woche', wert: plusTage(heute, 7) },
+  ];
+
+  return (
+    <Modal visible={sichtbar} animationType="slide" transparent onRequestClose={onAbbrechen}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={stil.dialogHintergrund}>
+        <View style={stil.dialog}>
+          <View style={stil.dialogKopf}>
+            <Pressable onPress={onAbbrechen} style={stil.dialogKnopfLinks}>
+              <Text style={[schrift.normal, { color: f.gedaempft }]}>Abbrechen</Text>
+            </Pressable>
+            <Text style={[schrift.titel, { color: f.tinte }]}>Neue Aufgabe</Text>
+            <Pressable onPress={anlegen} style={stil.dialogKnopfRechts} disabled={!text.trim()}>
+              <Text style={[schrift.betont, { color: f.weg }, !text.trim() && { opacity: 0.3 }]}>Anlegen</Text>
+            </Pressable>
+          </View>
+
+          <TextInput
+            style={stil.feld}
+            value={text}
+            onChangeText={setText}
+            placeholder="Was ist zu tun?"
+            placeholderTextColor={f.schwach}
+            autoFocus
+            returnKeyType="done"
+            onSubmitEditing={anlegen}
+          />
+
+          <Text style={[schrift.abschnitt, stil.abschnitt]}>BIS WANN</Text>
+          <View style={stil.chipZeile}>
+            {faelligkeiten.map((x) => (
+              <Pressable
+                key={x.wert}
+                onPress={() => setDue(due === x.wert ? undefined : x.wert)}
+                style={[stil.chip, due === x.wert && stil.chipAktiv]}
+              >
+                <Text style={[stil.chipText, due === x.wert && stil.chipTextAktiv]}>{x.label}</Text>
+              </Pressable>
+            ))}
+          </View>
+
+          <Text style={[schrift.abschnitt, stil.abschnitt]}>BEREICH</Text>
+          <View style={stil.chipZeile}>
+            {categories.map((k) => (
+              <Pressable
+                key={k}
+                onPress={() => setKategorie(kategorie === k ? undefined : k)}
+                style={[stil.chip, kategorie === k && stil.chipAktiv]}
+              >
+                <Text style={[stil.chipText, kategorie === k && stil.chipTextAktiv]}>{k}</Text>
+              </Pressable>
+            ))}
+            {categories.length < MAX_CATEGORIES && (
+              <Pressable onPress={() => setKatFeld((s) => !s)} style={stil.chip}>
+                <Text style={stil.chipText}>+ neuer Bereich</Text>
+              </Pressable>
+            )}
+          </View>
+
+          {katFeld && (
+            <View style={stil.katZeile}>
+              <TextInput
+                style={[stil.feld, { flex: 1 }]}
+                value={neueKat}
+                onChangeText={setNeueKat}
+                placeholder="Wie soll der Bereich heißen?"
+                placeholderTextColor={f.schwach}
+                returnKeyType="done"
+              />
+              <Pressable
+                onPress={() => {
+                  const echt = onNeueKategorie(neueKat);
+                  if (echt) setKategorie(echt);
+                  setNeueKat('');
+                  setKatFeld(false);
+                }}
+                style={stil.katKnopf}
+              >
+                <Text style={[schrift.betont, { color: f.aufAkzent }]}>Anlegen</Text>
+              </Pressable>
+            </View>
+          )}
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+const stile = (f: Farben) =>
+  StyleSheet.create({
+    sicher: { flex: 1, backgroundColor: f.papier },
+    kopfBlock: { paddingHorizontal: abstand.l, paddingTop: abstand.s, gap: abstand.m, paddingBottom: abstand.m },
+    titelZeile: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
+    plusKnopf: {
+      width: 44, height: 44, borderRadius: radius.s, backgroundColor: f.weg,
+      alignItems: 'center', justifyContent: 'center',
+    },
+    plusText: { color: f.aufAkzent, fontSize: 28, lineHeight: 32, fontFamily: 'BarlowSemiCondensed_500Medium' },
+    filterZeile: { gap: abstand.s, paddingRight: abstand.l },
+    inhalt: { paddingHorizontal: abstand.l, paddingBottom: abstand.xxl * 2, gap: abstand.l },
+    abschnitt: { color: f.schwach, paddingBottom: abstand.s, paddingTop: abstand.s },
+    aufgabe: { flexDirection: 'row', alignItems: 'flex-start', gap: abstand.s },
+    hakenFeld: { width: 30, height: 30, alignItems: 'flex-start', justifyContent: 'center' },
+    kasten: {
+      width: 21, height: 21, borderWidth: 2, borderColor: f.schwach, borderRadius: radius.s,
+      alignItems: 'center', justifyContent: 'center',
+    },
+    haken: { color: f.aufAkzent, fontSize: 13, lineHeight: 16 },
+    durch: { textDecorationLine: 'line-through' },
+    aktion: { width: 32, height: 34, alignItems: 'center', justifyContent: 'center' },
+    miniRaster: { width: 15, height: 15, borderWidth: 1.5, borderRadius: 2 },
+    miniLinie: { height: 1.5, width: '100%', marginTop: 2 },
+    kreuz: { fontSize: 15 },
+    erledigtKopf: { minHeight: 44, justifyContent: 'center' },
+    chip: {
+      borderWidth: 1, borderColor: f.linie, borderRadius: radius.s,
+      paddingHorizontal: abstand.m, minHeight: 38, justifyContent: 'center',
+    },
+    chipAktiv: { backgroundColor: f.tinte, borderColor: f.tinte },
+    chipText: { fontFamily: 'BarlowSemiCondensed_500Medium', fontSize: 16, color: f.gedaempft },
+    chipTextAktiv: { color: f.aufDunkel },
+    chipZeile: { flexDirection: 'row', flexWrap: 'wrap', gap: abstand.s },
+    dialogHintergrund: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(16,49,78,0.4)' },
+    dialog: {
+      backgroundColor: f.papier, borderTopLeftRadius: radius.gross, borderTopRightRadius: radius.gross,
+      padding: abstand.l, gap: abstand.s, paddingBottom: abstand.xxl,
+    },
+    dialogKopf: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: abstand.s },
+    dialogKnopfLinks: { minWidth: 92, minHeight: 44, justifyContent: 'center' },
+    dialogKnopfRechts: { minWidth: 92, minHeight: 44, justifyContent: 'center', alignItems: 'flex-end' },
+    feld: {
+      borderWidth: 1, borderColor: f.linie, backgroundColor: f.flaeche, borderRadius: radius.s,
+      paddingHorizontal: abstand.m, paddingVertical: abstand.m,
+      fontFamily: 'Barlow_400Regular', fontSize: 17, color: f.tinte, minHeight: 50,
+    },
+    katZeile: { flexDirection: 'row', gap: abstand.s, alignItems: 'center' },
+    katKnopf: {
+      backgroundColor: f.weg, borderRadius: radius.s, paddingHorizontal: abstand.l,
+      minHeight: 50, justifyContent: 'center',
+    },
+  });

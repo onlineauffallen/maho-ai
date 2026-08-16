@@ -6,7 +6,7 @@ import { getOnboardingToolDefinitions, executeOnboardingTool } from '@/lib/onboa
 import { buildOnboardingPrompt, splitVorschlaege } from '@/lib/promptBuilder';
 import { useProfileStore, MAX_PROFILE_CHARS } from '@/lib/profileStore';
 import { ChatFlaeche, type Nachricht } from '@/components/ChatFlaeche';
-import { abstand, farben, radius, schrift } from '@/lib/theme';
+import { abstand, radius, schrift, useFarben, type Farben } from '@/lib/theme';
 
 // Statt eines API-Calls beim Öffnen: die erste Frage steht fest. Spart
 // Wartezeit und Kosten, und der Einstieg ist immer derselbe.
@@ -24,6 +24,8 @@ const START: Nachricht = {
 const MAX_RUNDEN = 6;
 
 export default function OnboardingScreen() {
+  const f = useFarben();
+  const stil = stile(f);
   const profil = useProfileStore();
   const [messages, setMessages] = useState<Nachricht[]>([START]);
   const [vorschlaege, setVorschlaege] = useState<string[]>([]);
@@ -122,8 +124,8 @@ export default function OnboardingScreen() {
       fehler={fehler}
       onAbbrechen={() => abbruch.current?.abort()}
       fussZeile={
-        <Pressable onPress={abkuerzen} style={styles.ueberspringen} accessibilityRole="button">
-          <Text style={styles.ueberspringenText}>Das reicht, los geht&apos;s</Text>
+        <Pressable onPress={abkuerzen} style={stil.ueberspringen} accessibilityRole="button">
+          <Text style={stil.ueberspringenText}>Das reicht, los geht&apos;s</Text>
         </Pressable>
       }
     />
@@ -137,83 +139,86 @@ export default function OnboardingScreen() {
  * den es nicht mehr gab.
  */
 function Zusammenfassung() {
+  const f = useFarben();
+  const stil = stile(f);
   const { name, basics, categories, setOnboardingDone } = useProfileStore();
   const belegt = basics.length;
 
   return (
-    <SafeAreaView style={styles.sicher}>
-      <ScrollView contentContainerStyle={styles.inhalt}>
-        <Text style={styles.titel}>Das hab ich mir gemerkt</Text>
+    <SafeAreaView style={stil.sicher}>
+      <ScrollView contentContainerStyle={stil.inhalt}>
+        <Text style={stil.titel}>Das hab ich mir gemerkt</Text>
 
-        <View style={styles.block}>
-          <Text style={styles.beschriftung}>Ich nenne dich</Text>
-          <Text style={styles.wert}>{name || 'einfach du'}</Text>
+        <View style={stil.block}>
+          <Text style={stil.beschriftung}>Ich nenne dich</Text>
+          <Text style={stil.wert}>{name || 'einfach du'}</Text>
         </View>
 
         {!!basics && (
-          <View style={styles.block}>
-            <Text style={styles.beschriftung}>Über dich</Text>
-            <Text style={styles.wert}>{basics}</Text>
-            <View style={styles.balkenRahmen}>
-              <View style={[styles.balken, { width: `${Math.min(100, (belegt / MAX_PROFILE_CHARS) * 100)}%` }]} />
+          <View style={stil.block}>
+            <Text style={stil.beschriftung}>Über dich</Text>
+            <Text style={stil.wert}>{basics}</Text>
+            <View style={stil.balkenRahmen}>
+              <View style={[stil.balken, { width: `${Math.min(100, (belegt / MAX_PROFILE_CHARS) * 100)}%` }]} />
             </View>
-            <Text style={styles.klein}>
+            <Text style={stil.klein}>
               {belegt} von {MAX_PROFILE_CHARS} Zeichen. Wird es eng, verdichte ich das Wichtigste.
             </Text>
           </View>
         )}
 
         {categories.length > 0 && (
-          <View style={styles.block}>
-            <Text style={styles.beschriftung}>Deine Bereiche</Text>
-            <View style={styles.chipZeile}>
+          <View style={stil.block}>
+            <Text style={stil.beschriftung}>Deine Bereiche</Text>
+            <View style={stil.chipZeile}>
               {categories.map((k) => (
-                <View key={k} style={styles.chip}>
-                  <Text style={styles.chipText}>{k}</Text>
+                <View key={k} style={stil.chip}>
+                  <Text style={stil.chipText}>{k}</Text>
                 </View>
               ))}
             </View>
           </View>
         )}
 
-        <Text style={styles.klein}>
+        <Text style={stil.klein}>
           Das kannst du jederzeit unter Einstellungen ändern oder löschen.
         </Text>
 
         <Pressable
           onPress={() => setOnboardingDone(true)}
-          style={({ pressed }) => [styles.knopf, pressed && { opacity: 0.7 }]}
+          style={({ pressed }) => [stil.knopf, pressed && { opacity: 0.7 }]}
           accessibilityRole="button"
         >
-          <Text style={styles.knopfText}>Passt, los geht&apos;s</Text>
+          <Text style={stil.knopfText}>Passt, los geht&apos;s</Text>
         </Pressable>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  sicher: { flex: 1, backgroundColor: farben.grund },
+const stile = (f: Farben) =>
+  StyleSheet.create({
+  sicher: { flex: 1, backgroundColor: f.papier },
   inhalt: { padding: abstand.l, gap: abstand.l },
-  titel: { ...schrift.titel, color: farben.text, marginTop: abstand.l },
+  titel: { ...schrift.titel, color: f.tinte, marginTop: abstand.l },
   block: { gap: abstand.s },
-  beschriftung: { ...schrift.abschnitt, color: farben.gedaempft, textTransform: 'uppercase' },
-  wert: { fontSize: 16, color: farben.text, lineHeight: 23 },
-  klein: { fontSize: 13, color: farben.schwach },
-  balkenRahmen: { height: 6, backgroundColor: farben.flaeche, borderRadius: radius.rund, overflow: 'hidden' },
-  balken: { height: 6, backgroundColor: farben.akzent, borderRadius: radius.rund },
+  beschriftung: { ...schrift.abschnitt, color: f.gedaempft, textTransform: 'uppercase' },
+  wert: { fontSize: 16, color: f.tinte, lineHeight: 23 },
+  klein: { fontSize: 13, color: f.schwach },
+  balkenRahmen: { height: 6, backgroundColor: f.flaeche, borderRadius: radius.rund, overflow: 'hidden' },
+  balken: { height: 6, backgroundColor: f.weg, borderRadius: radius.rund },
   chipZeile: { flexDirection: 'row', flexWrap: 'wrap', gap: abstand.s },
   chip: {
-    backgroundColor: farben.akzentSchwach,
+    backgroundColor: f.wegSchwach,
     borderColor: '#ddd6fe',
     borderWidth: 1,
     borderRadius: radius.rund,
     paddingHorizontal: abstand.m,
     paddingVertical: abstand.xs + 2,
   },
-  chipText: { color: farben.akzent, fontSize: 14 },
+  chipText: { color: f.weg, fontSize: 14 },
   knopf: {
-    backgroundColor: farben.akzent,
+    backgroundColor: f.weg,
     borderRadius: radius.m,
     paddingVertical: abstand.m,
     alignItems: 'center',
@@ -227,5 +232,5 @@ const styles = StyleSheet.create({
     minHeight: 44,
     justifyContent: 'center',
   },
-  ueberspringenText: { color: farben.gedaempft, fontSize: 15 },
+  ueberspringenText: { color: f.gedaempft, fontSize: 15 },
 });

@@ -21,7 +21,7 @@ import { alleTermineLoeschen } from '@/lib/kalender';
 import { useFollowupStore } from '@/lib/followupStore';
 import { datumLesbar } from '@/lib/ids';
 import { kategorieLoeschen, kategorieUmbenennen, aufgabenIn } from '@/lib/kategorien';
-import { abstand, farben, radius, schrift } from '@/lib/theme';
+import { abstand, radius, schrift, useFarben, type Farben } from '@/lib/theme';
 
 /**
  * Der Rückweg zu allem, was Maho über den Nutzer gespeichert hat.
@@ -31,6 +31,8 @@ import { abstand, farben, radius, schrift } from '@/lib/theme';
  * Berichtigung und Löschung waren technisch unmöglich.
  */
 export default function EinstellungenScreen() {
+  const f = useFarben();
+  const stil = stile(f);
   const router = useRouter();
   const profil = useProfileStore();
   const { memory, setMemory } = useMemoryStore();
@@ -120,82 +122,82 @@ export default function EinstellungenScreen() {
   const gedaechtnisZeilen = memory.split('\n').filter((z) => z.trim());
 
   return (
-    <SafeAreaView style={styles.sicher}>
-      <View style={styles.kopf}>
-        <Pressable onPress={() => router.back()} style={styles.zurueck} accessibilityRole="button">
-          <Text style={styles.zurueckText}>‹ Zurück</Text>
+    <SafeAreaView style={stil.sicher}>
+      <View style={stil.kopf}>
+        <Pressable onPress={() => router.back()} style={stil.zurueck} accessibilityRole="button">
+          <Text style={stil.zurueckText}>‹ Zurück</Text>
         </Pressable>
-        <Text style={styles.kopfTitel}>Einstellungen</Text>
-        <View style={styles.zurueck} />
+        <Text style={stil.kopfTitel}>Einstellungen</Text>
+        <View style={stil.zurueck} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.inhalt} keyboardShouldPersistTaps="handled">
-        <View style={styles.block}>
-          <Text style={styles.abschnitt}>ÜBER DICH</Text>
-          <Text style={styles.beschriftung}>Wie ich dich nenne</Text>
+      <ScrollView contentContainerStyle={stil.inhalt} keyboardShouldPersistTaps="handled">
+        <View style={stil.block}>
+          <Text style={stil.abschnitt}>ÜBER DICH</Text>
+          <Text style={stil.beschriftung}>Wie ich dich nenne</Text>
           <TextInput
-            style={styles.feld}
+            style={stil.feld}
             value={name}
             onChangeText={setName}
             onBlur={() => profil.setName(name)}
             placeholder="du"
-            placeholderTextColor={farben.schwach}
+            placeholderTextColor={f.schwach}
           />
 
-          <Text style={styles.beschriftung}>Was ich über dich weiß</Text>
+          <Text style={stil.beschriftung}>Was ich über dich weiß</Text>
           <TextInput
-            style={[styles.feld, styles.feldGross, zuLang && styles.feldFehler]}
+            style={[stil.feld, stil.feldGross, zuLang && stil.feldFehler]}
             value={basics}
             onChangeText={setBasics}
             multiline
             textAlignVertical="top"
             placeholder="Noch nichts hinterlegt."
-            placeholderTextColor={farben.schwach}
+            placeholderTextColor={f.schwach}
           />
-          <View style={styles.balkenRahmen}>
+          <View style={stil.balkenRahmen}>
             <View
               style={[
-                styles.balken,
+                stil.balken,
                 { width: `${Math.min(100, (belegt / MAX_PROFILE_CHARS) * 100)}%` },
-                belegt > MAX_PROFILE_CHARS * 0.9 && { backgroundColor: farben.warnung },
+                belegt > MAX_PROFILE_CHARS * 0.9 && { backgroundColor: f.warnung },
               ]}
             />
           </View>
-          <View style={styles.zeile}>
-            <Text style={[styles.klein, zuLang && { color: farben.warnung }]}>
+          <View style={stil.zeile}>
+            <Text style={[stil.klein, zuLang && { color: f.warnung }]}>
               {belegt} von {MAX_PROFILE_CHARS} Zeichen
             </Text>
-            <Pressable onPress={basicsSichern} style={styles.kleinerKnopf}>
-              <Text style={styles.kleinerKnopfText}>Sichern</Text>
+            <Pressable onPress={basicsSichern} style={stil.kleinerKnopf}>
+              <Text style={stil.kleinerKnopfText}>Sichern</Text>
             </Pressable>
           </View>
-          {!!hinweis && <Text style={styles.klein}>{hinweis}</Text>}
+          {!!hinweis && <Text style={stil.klein}>{hinweis}</Text>}
         </View>
 
-        <View style={styles.block}>
-          <Text style={styles.abschnitt}>WAS MAHO GELERNT HAT</Text>
-          {gedaechtnisZeilen.length === 0 && <Text style={styles.klein}>Noch nichts.</Text>}
+        <View style={stil.block}>
+          <Text style={stil.abschnitt}>WAS MAHO GELERNT HAT</Text>
+          {gedaechtnisZeilen.length === 0 && <Text style={stil.klein}>Noch nichts.</Text>}
           {gedaechtnisZeilen.map((z, i) => (
-            <View key={`${i}-${z.slice(0, 12)}`} style={styles.gedaechtnisZeile}>
-              <Text style={styles.gedaechtnisText}>{z}</Text>
+            <View key={`${i}-${z.slice(0, 12)}`} style={stil.gedaechtnisZeile}>
+              <Text style={stil.gedaechtnisText}>{z}</Text>
               <Pressable
                 onPress={() => gedaechtnisZeileLoeschen(z)}
-                style={styles.miniKnopf}
+                style={stil.miniKnopf}
                 accessibilityRole="button"
                 accessibilityLabel="Diese Erinnerung löschen"
               >
-                <Text style={{ color: farben.warnung }}>✕</Text>
+                <Text style={{ color: f.warnung }}>✕</Text>
               </Pressable>
             </View>
           ))}
           {gedaechtnisZeilen.length > 0 && (
             <>
-              <View style={styles.balkenRahmen}>
+              <View style={stil.balkenRahmen}>
                 <View
-                  style={[styles.balken, { width: `${Math.min(100, (memory.length / MAX_MEMORY_CHARS) * 100)}%` }]}
+                  style={[stil.balken, { width: `${Math.min(100, (memory.length / MAX_MEMORY_CHARS) * 100)}%` }]}
                 />
               </View>
-              <Text style={styles.klein}>
+              <Text style={stil.klein}>
                 {memory.length} von {MAX_MEMORY_CHARS} Zeichen. Wird es eng, verdichtet Maho selbst.
               </Text>
             </>
@@ -203,44 +205,44 @@ export default function EinstellungenScreen() {
         </View>
 
         {followups.wiedervorlagen.filter((w) => !w.angesprochen).length > 0 && (
-          <View style={styles.block}>
-            <Text style={styles.abschnitt}>WORÜBER WIR NOCHMAL REDEN</Text>
+          <View style={stil.block}>
+            <Text style={stil.abschnitt}>WORÜBER WIR NOCHMAL REDEN</Text>
             {followups.wiedervorlagen
               .filter((w) => !w.angesprochen)
               .map((w) => (
-                <View key={w.id} style={styles.gedaechtnisZeile}>
+                <View key={w.id} style={stil.gedaechtnisZeile}>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.gedaechtnisText}>{w.thema}</Text>
-                    <Text style={styles.klein}>{datumLesbar(w.faelligAm)}</Text>
+                    <Text style={stil.gedaechtnisText}>{w.thema}</Text>
+                    <Text style={stil.klein}>{datumLesbar(w.faelligAm)}</Text>
                   </View>
                   <Pressable
                     onPress={() => followups.entfernen(w.id)}
-                    style={styles.miniKnopf}
+                    style={stil.miniKnopf}
                     accessibilityLabel={`${w.thema} entfernen`}
                   >
-                    <Text style={{ color: farben.warnung }}>✕</Text>
+                    <Text style={{ color: f.warnung }}>✕</Text>
                   </Pressable>
                 </View>
               ))}
           </View>
         )}
 
-        <View style={styles.block}>
-          <Text style={styles.abschnitt}>BEREICHE</Text>
-          {profil.categories.length === 0 && <Text style={styles.klein}>Noch keine.</Text>}
+        <View style={stil.block}>
+          <Text style={stil.abschnitt}>BEREICHE</Text>
+          {profil.categories.length === 0 && <Text style={stil.klein}>Noch keine.</Text>}
           {profil.categories.map((k) => (
             <KategorieZeile key={k} name={k} />
           ))}
         </View>
 
-        <View style={styles.block}>
-          <Text style={styles.abschnitt}>DATEN</Text>
-          <Text style={styles.klein}>
+        <View style={stil.block}>
+          <Text style={stil.abschnitt}>DATEN</Text>
+          <Text style={stil.klein}>
             Maho denkt mit einem Sprachmodell von OpenAI. Was du schreibst, und was hier oben
             gespeichert ist, wird dorthin übertragen, um die Antwort zu erzeugen.
           </Text>
-          <Pressable onPress={datenExportieren} style={styles.aktionZeile}>
-            <Text style={styles.aktionText}>Meine Daten exportieren</Text>
+          <Pressable onPress={datenExportieren} style={stil.aktionZeile}>
+            <Text style={stil.aktionText}>Meine Daten exportieren</Text>
           </Pressable>
           <Pressable
             onPress={() =>
@@ -249,12 +251,12 @@ export default function EinstellungenScreen() {
                 { text: 'Löschen', style: 'destructive', onPress: () => chat.leeren() },
               ])
             }
-            style={styles.aktionZeile}
+            style={stil.aktionZeile}
           >
-            <Text style={styles.aktionText}>Chatverlauf löschen</Text>
+            <Text style={stil.aktionText}>Chatverlauf löschen</Text>
           </Pressable>
-          <Pressable onPress={allesLoeschen} style={styles.aktionZeile}>
-            <Text style={[styles.aktionText, { color: farben.warnung }]}>Alle meine Daten löschen</Text>
+          <Pressable onPress={allesLoeschen} style={stil.aktionZeile}>
+            <Text style={[stil.aktionText, { color: f.warnung }]}>Alle meine Daten löschen</Text>
           </Pressable>
         </View>
       </ScrollView>
@@ -263,6 +265,8 @@ export default function EinstellungenScreen() {
 }
 
 function KategorieZeile({ name }: { name: string }) {
+  const f = useFarben();
+  const stil = stile(f);
   const [wert, setWert] = useState(name);
 
   function loeschen() {
@@ -280,22 +284,23 @@ function KategorieZeile({ name }: { name: string }) {
   }
 
   return (
-    <View style={styles.zeile}>
+    <View style={stil.zeile}>
       <TextInput
-        style={[styles.feld, { flex: 1 }]}
+        style={[stil.feld, { flex: 1 }]}
         value={wert}
         onChangeText={setWert}
         onBlur={() => kategorieUmbenennen(name, wert)}
       />
-      <Pressable onPress={loeschen} style={styles.miniKnopf} accessibilityLabel={`${name} löschen`}>
-        <Text style={{ color: farben.warnung }}>✕</Text>
+      <Pressable onPress={loeschen} style={stil.miniKnopf} accessibilityLabel={`${name} löschen`}>
+        <Text style={{ color: f.warnung }}>✕</Text>
       </Pressable>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  sicher: { flex: 1, backgroundColor: farben.grund },
+const stile = (f: Farben) =>
+  StyleSheet.create({
+  sicher: { flex: 1, backgroundColor: f.papier },
   kopf: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -303,33 +308,33 @@ const styles = StyleSheet.create({
     paddingHorizontal: abstand.l,
     paddingVertical: abstand.s,
     borderBottomWidth: 1,
-    borderBottomColor: farben.rand,
+    borderBottomColor: f.linie,
   },
   zurueck: { minWidth: 80, minHeight: 44, justifyContent: 'center' },
-  zurueckText: { color: farben.akzent, fontSize: 16 },
-  kopfTitel: { ...schrift.titel, fontSize: 17, color: farben.text },
+  zurueckText: { color: f.weg, fontSize: 16 },
+  kopfTitel: { ...schrift.titel, fontSize: 17, color: f.tinte },
   inhalt: { padding: abstand.l, gap: abstand.xl, paddingBottom: abstand.xl * 2 },
   block: { gap: abstand.s },
-  abschnitt: { ...schrift.abschnitt, color: farben.gedaempft },
-  beschriftung: { fontSize: 13, color: farben.gedaempft, marginTop: abstand.s },
+  abschnitt: { ...schrift.abschnitt, color: f.gedaempft },
+  beschriftung: { fontSize: 13, color: f.gedaempft, marginTop: abstand.s },
   feld: {
     borderWidth: 1,
-    borderColor: farben.rand,
+    borderColor: f.linie,
     borderRadius: radius.m,
     paddingHorizontal: abstand.m,
     paddingVertical: abstand.s,
     fontSize: 16,
-    color: farben.text,
+    color: f.tinte,
     minHeight: 44,
   },
   feldGross: { minHeight: 140 },
-  feldFehler: { borderColor: farben.warnung },
-  balkenRahmen: { height: 6, backgroundColor: farben.flaeche, borderRadius: radius.rund, overflow: 'hidden' },
-  balken: { height: 6, backgroundColor: farben.akzent, borderRadius: radius.rund },
+  feldFehler: { borderColor: f.warnung },
+  balkenRahmen: { height: 6, backgroundColor: f.flaeche, borderRadius: radius.rund, overflow: 'hidden' },
+  balken: { height: 6, backgroundColor: f.weg, borderRadius: radius.rund },
   zeile: { flexDirection: 'row', alignItems: 'center', gap: abstand.s, justifyContent: 'space-between' },
-  klein: { fontSize: 13, color: farben.gedaempft, flexShrink: 1 },
+  klein: { fontSize: 13, color: f.gedaempft, flexShrink: 1 },
   kleinerKnopf: {
-    backgroundColor: farben.akzent,
+    backgroundColor: f.weg,
     borderRadius: radius.s,
     paddingHorizontal: abstand.m,
     paddingVertical: abstand.s,
@@ -342,11 +347,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: abstand.s,
     borderBottomWidth: 1,
-    borderBottomColor: farben.rand,
+    borderBottomColor: f.linie,
     paddingVertical: abstand.xs,
   },
-  gedaechtnisText: { flex: 1, fontSize: 15, color: farben.text },
+  gedaechtnisText: { flex: 1, fontSize: 15, color: f.tinte },
   miniKnopf: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  aktionZeile: { paddingVertical: abstand.m, borderBottomWidth: 1, borderBottomColor: farben.rand, minHeight: 44 },
-  aktionText: { fontSize: 16, color: farben.akzent },
+  aktionZeile: { paddingVertical: abstand.m, borderBottomWidth: 1, borderBottomColor: f.linie, minHeight: 44 },
+  aktionText: { fontSize: 16, color: f.weg },
 });

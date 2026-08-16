@@ -1,16 +1,39 @@
 import { useRef, useState } from 'react';
-import { Pressable, Text } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { Link } from 'expo-router';
 import { runMahoAgent, ChatFehler } from '@/lib/chatService';
 import { buildSystemPrompt } from '@/lib/promptBuilder';
 import { useMemoryStore, evaluateAndUpdateMemory } from '@/lib/memory';
 import { useChatStore } from '@/lib/chatStore';
 import { useProfileStore } from '@/lib/profileStore';
+import { useFarben } from '@/lib/theme';
 import { useFollowupStore, faelligeWiedervorlagen } from '@/lib/followupStore';
 import { vorschlagAusfuehren } from '@/lib/vorschlaege';
 import { erinnerungenAktualisieren } from '@/lib/benachrichtigungen';
 import { kalenderZugriffSicherstellen } from '@/lib/kalender';
 import { ChatFlaeche } from '@/components/ChatFlaeche';
+
+function Regler({ oben }: { oben?: boolean }) {
+  const f = useFarben();
+  return (
+    <View style={reglerStil.zeile}>
+      <View style={[reglerStil.schiene, { backgroundColor: f.gedaempft }]} />
+      <View
+        style={[
+          reglerStil.knopf,
+          { backgroundColor: f.papier, borderColor: f.gedaempft, left: oben ? 11 : 3 },
+        ]}
+      />
+    </View>
+  );
+}
+
+const reglerStil = StyleSheet.create({
+  feld: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', gap: 6 },
+  zeile: { width: 20, height: 8, justifyContent: 'center' },
+  schiene: { height: 1.5, width: '100%', borderRadius: 1 },
+  knopf: { position: 'absolute', width: 7, height: 7, borderRadius: 4, borderWidth: 1.5 },
+});
 
 /** Aus dem Fehler wird ein Satz, mit dem ein Mensch etwas anfangen kann. */
 function fehlerText(e: unknown): string | undefined {
@@ -138,12 +161,11 @@ export default function ChatScreen() {
       }}
       kopfAktion={
         <Link href="/einstellungen" asChild>
-          <Pressable
-            style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}
-            accessibilityRole="button"
-            accessibilityLabel="Einstellungen"
-          >
-            <Text style={{ fontSize: 20 }}>⚙️</Text>
+          <Pressable style={reglerStil.feld} accessibilityRole="button" accessibilityLabel="Einstellungen">
+            {/* Zwei Schieberegler statt Zahnrad-Emoji: leicht zu zeichnen, in
+                jeder Größe scharf, und es nimmt die Farbe der Gestaltung an. */}
+            <Regler oben />
+            <Regler />
           </Pressable>
         </Link>
       }
