@@ -88,6 +88,8 @@ export default function KalenderScreen() {
   }, [events, todos]);
 
   const sichtbar = eintraege.filter((e) => e.datum >= von && e.datum <= bis);
+  // Für den leeren Zustand: was kommt nach dem betrachteten Zeitraum als Nächstes?
+  const naechste = eintraege.filter((e) => e.datum > bis).slice(0, 3);
   const proTag = useMemo(() => {
     const m = new Map<string, number>();
     for (const e of eintraege) m.set(e.datum, (m.get(e.datum) ?? 0) + 1);
@@ -190,7 +192,39 @@ export default function KalenderScreen() {
             <Text style={styles.abschnittZahl}>  {sichtbar.length}</Text>
           </Text>
 
-          {sichtbar.length === 0 && <Text style={styles.leer}>Nichts eingetragen.</Text>}
+          {sichtbar.length === 0 && (
+            <View style={{ gap: abstand.s }}>
+              <Text style={styles.leer}>
+                {view === 'day' ? 'An diesem Tag ist nichts.' : 'In diesem Zeitraum ist nichts.'}
+              </Text>
+
+              {/* Der leere Tag war die Falle: Termine lagen in der Zukunft, die
+                  Ansicht stand auf heute, und die App behauptete stumm, es gäbe
+                  nichts. Jetzt zeigt sie, wann es weitergeht. */}
+              {naechste.length > 0 && (
+                <>
+                  <Text style={styles.abschnitt}>ALS NÄCHSTES</Text>
+                  {naechste.map((e) => (
+                    <Pressable
+                      key={`n-${e.art}-${e.id}`}
+                      onPress={() => { setSelectedDate(e.datum); setView('day'); }}
+                      style={styles.eintrag}
+                    >
+                      <Text style={styles.eintragZeichen}>{e.art === 'termin' ? '📅' : '📝'}</Text>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.eintragTitel}>{e.titel}</Text>
+                        <Text style={styles.eintragZeit}>
+                          {datumLesbar(e.datum)}
+                          {e.zeit ? `, ${e.zeit}` : e.art === 'aufgabe' ? ', fällig' : ''}
+                        </Text>
+                      </View>
+                      <Text style={styles.pfeilKlein}>›</Text>
+                    </Pressable>
+                  ))}
+                </>
+              )}
+            </View>
+          )}
 
           {sichtbar.map((e) => (
             <View key={`${e.art}-${e.id}`} style={styles.eintrag}>
@@ -455,4 +489,5 @@ const styles = StyleSheet.create({
   eintragTitel: { fontSize: 16, color: farben.text },
   eintragZeit: { fontSize: 12, color: farben.gedaempft, marginTop: 2 },
   leer: { color: farben.schwach },
+  pfeilKlein: { fontSize: 22, color: farben.schwach, paddingHorizontal: abstand.s },
 });
