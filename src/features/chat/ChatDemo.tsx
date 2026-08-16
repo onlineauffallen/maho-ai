@@ -1,14 +1,14 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
 import { runMahoAgent } from '@/lib/chatService';
-import { useOnboardingStore } from '@/lib/useOnboardingStore';
 import { buildSystemPrompt } from '@/lib/promptBuilder';
 import { useMemoryStore, evaluateAndUpdateMemory } from '@/lib/memory';
 import { useChatStore } from '@/lib/chatStore';
+import { useProfileStore } from '@/lib/profileStore';
 import BubbleNav from '@/features/common/BubbleNav';
 
 export default function ChatDemo() {
-  const { name, selectedAreas, answers } = useOnboardingStore();
+  const { name, basics, categories } = useProfileStore();
   const memory = useMemoryStore((s) => s.memory);
   const messages = useChatStore((s) => s.messages);
   const addMessage = useChatStore((s) => s.addMessage);
@@ -29,7 +29,7 @@ export default function ChatDemo() {
     setBusy(true);
 
     const systemPrompt = buildSystemPrompt({
-      userData: { name, selectedAreas, answers },
+      profil: { name, basics, categories },
       memory,
     });
 

@@ -1,7 +1,7 @@
 // src/lib/chatService.ts
 // Agenten-Schleife: Nachricht + Tools an die API, Tool-Calls clientseitig
 // gegen die Stores ausführen, Ergebnisse zurückgeben, bis eine Textantwort kommt.
-import { toolDefinitions, executeTool, ToolAction } from './tools';
+import { getToolDefinitions, executeTool, ToolAction } from './tools';
 
 type ApiMessage = {
   role: 'system' | 'user' | 'assistant' | 'tool';
@@ -10,13 +10,28 @@ type ApiMessage = {
   tool_call_id?: string;
 };
 
+/**
+ * Welche Werkzeuge in diesem Gespräch erlaubt sind. Im Alltag sind das Termine
+ * und Aufgaben, im Kennenlerngespräch nur das Profil. Beides läuft durch dieselbe
+ * Schleife, damit es nur eine Stelle gibt, die Tool-Calls abarbeitet.
+ */
+export type ToolSet = {
+  definitions: () => unknown[];
+  execute: (name: string, args: Record<string, unknown>) => { result: string; action?: ToolAction };
+};
+
+export const alltagsWerkzeuge: ToolSet = {
+  definitions: getToolDefinitions,
+  execute: executeTool,
+};
+
 const MAX_TOOL_ROUNDS = 5;
 
-async function callApi(messages: ApiMessage[], withTools: boolean) {
+async function callApi(messages: ApiMessage[], tools: unknown[] | undefined) {
   const res = await fetch('/api/openai-chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messages, ...(withTools ? { tools: toolDefinitions } : {}) }),
+    body: JSON.stringify({ purpose: 'chat', messages, ...(tools?.length ? { tools } : {}) }),
   });
   if (!res.ok) {
     const { error } = await res.json().catch(() => ({ error: res.statusText }));
@@ -30,10 +45,12 @@ export async function runMahoAgent({
   systemPrompt,
   history,
   userInput,
+  toolset = alltagsWerkzeuge,
 }: {
   systemPrompt: string;
   history: { role: 'user' | 'assistant'; content: string }[];
   userInput: string;
+  toolset?: ToolSet;
 }): Promise<{ text: string; actions: ToolAction[] }> {
   const messages: ApiMessage[] = [
     { role: 'system', content: systemPrompt },
@@ -43,7 +60,11 @@ export async function runMahoAgent({
   const actions: ToolAction[] = [];
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-    const message = await callApi(messages, true);
+    // In der letzten erlaubten Runde ohne Tools fragen. Das erzwingt eine
+    // Textantwort statt der Abbruchmeldung unten und spart die Tool-Definitionen
+    // im Prompt, die in einer reinen Zusammenfassung nichts zu suchen haben.
+    const letzteRunde = round === MAX_TOOL_ROUNDS - 1;
+    const message = await callApi(messages, letzteRunde ? undefined : toolset.definitions());
 
     if (message.tool_calls?.length) {
       messages.push(message);
@@ -54,7 +75,7 @@ export async function runMahoAgent({
         } catch {
           /* leere Args */
         }
-        const { result, action } = executeTool(call.function.name, args);
+        const { result, action } = toolset.execute(call.function.name, args);
         if (action) actions.push(action);
         messages.push({ role: 'tool', tool_call_id: call.id, content: result });
       }
