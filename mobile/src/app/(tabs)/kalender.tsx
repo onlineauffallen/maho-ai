@@ -1,8 +1,20 @@
-import { useMemo } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useMemo, useState } from 'react';
+import {
+  Alert,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useCalendarStore, type CalendarView } from '@/lib/calendarStore';
 import { useTodoStore } from '@/lib/todoStore';
+import { terminAnlegen, terminLoeschen, kalenderZugriffSicherstellen } from '@/lib/kalender';
 import { alsDatum, datumLesbar, plusTage, today, wochenStart } from '@/lib/ids';
 import { abstand, farben, radius, schrift } from '@/lib/theme';
 
@@ -36,6 +48,27 @@ export default function KalenderScreen() {
   const todos = useTodoStore((s) => s.todos);
   const heute = today();
   const { von, bis } = zeitraum(view, selectedDate);
+  const [neuOffen, setNeuOffen] = useState(false);
+  const [neuDatum, setNeuDatum] = useState(selectedDate);
+
+  function neuOeffnen() {
+    setNeuDatum(selectedDate);
+    setNeuOffen(true);
+  }
+
+  function terminSichern(titel: string, zeit?: string) {
+    terminAnlegen({ title: titel, date: neuDatum, time: zeit });
+    setNeuOffen(false);
+    setSelectedDate(neuDatum);
+    void kalenderZugriffSicherstellen();
+  }
+
+  function terminLoeschenMitRueckfrage(id: string, titel: string) {
+    Alert.alert('Termin löschen?', `„${titel}" wird entfernt.`, [
+      { text: 'Abbrechen', style: 'cancel' },
+      { text: 'Löschen', style: 'destructive', onPress: () => terminLoeschen(id) },
+    ]);
+  }
 
   // Termine und fällige Aufgaben in einer Liste. Aufgaben, die schon einen
   // Termin haben, kämen sonst doppelt: einmal als Termin, einmal als Fälligkeit.
@@ -82,6 +115,27 @@ export default function KalenderScreen() {
   return (
     <SafeAreaView style={styles.sicher} edges={['top']}>
       <View style={styles.kopfBlock}>
+        <View style={styles.titelZeile}>
+          <Text style={styles.screenTitel}>Kalender</Text>
+          <View style={styles.titelAktionen}>
+            {/* Der Sprung auf heute war vorher unsichtbar auf der Überschrift.
+                Eine Funktion, die man nicht sieht, gibt es nicht. */}
+            {selectedDate !== heute && (
+              <Pressable onPress={() => setSelectedDate(heute)} style={styles.heuteKnopf}>
+                <Text style={styles.heuteKnopfText}>Heute</Text>
+              </Pressable>
+            )}
+            <Pressable
+              onPress={() => neuOeffnen()}
+              style={styles.plusKnopf}
+              accessibilityRole="button"
+              accessibilityLabel="Neuen Termin anlegen"
+            >
+              <Text style={styles.plusText}>+</Text>
+            </Pressable>
+          </View>
+        </View>
+
         <View style={styles.umschalter}>
           {(['day', 'week', 'month'] as CalendarView[]).map((v) => (
             <Pressable
@@ -97,11 +151,13 @@ export default function KalenderScreen() {
         </View>
 
         <View style={styles.navZeile}>
-          <Pressable onPress={() => blaettern(-1)} hitSlop={10}><Text style={styles.pfeil}>‹</Text></Pressable>
-          <Pressable onPress={() => setSelectedDate(heute)}>
-            <Text style={styles.kopfText}>{kopf}</Text>
+          <Pressable onPress={() => blaettern(-1)} style={styles.pfeilFeld} accessibilityLabel="zurück">
+            <Text style={styles.pfeil}>‹</Text>
           </Pressable>
-          <Pressable onPress={() => blaettern(1)} hitSlop={10}><Text style={styles.pfeil}>›</Text></Pressable>
+          <Text style={styles.kopfText}>{kopf}</Text>
+          <Pressable onPress={() => blaettern(1)} style={styles.pfeilFeld} accessibilityLabel="weiter">
+            <Text style={styles.pfeil}>›</Text>
+          </Pressable>
         </View>
       </View>
 
@@ -150,11 +206,119 @@ export default function KalenderScreen() {
                       : 'ganztägig'}
                 </Text>
               </View>
+              {e.art === 'termin' && (
+                <Pressable
+                  onPress={() => terminLoeschenMitRueckfrage(e.id, e.titel)}
+                  style={styles.eintragAktion}
+                  accessibilityLabel={`${e.titel} löschen`}
+                >
+                  <Text style={{ color: farben.warnung }}>✕</Text>
+                </Pressable>
+              )}
             </View>
           ))}
         </View>
       </ScrollView>
+
+      <NeuerTerminDialog
+        sichtbar={neuOffen}
+        datum={neuDatum}
+        setDatum={setNeuDatum}
+        onAbbrechen={() => setNeuOffen(false)}
+        onSichern={terminSichern}
+      />
     </SafeAreaView>
+  );
+}
+
+/** Anlegen eines Termins. Vorher ging das im Kalender überhaupt nicht. */
+function NeuerTerminDialog({
+  sichtbar,
+  datum,
+  setDatum,
+  onAbbrechen,
+  onSichern,
+}: {
+  sichtbar: boolean;
+  datum: string;
+  setDatum: (d: string) => void;
+  onAbbrechen: () => void;
+  onSichern: (titel: string, zeit?: string) => void;
+}) {
+  const [titel, setTitel] = useState('');
+  const [zeit, setZeit] = useState('');
+
+  function sichern() {
+    if (!titel.trim()) return;
+    onSichern(titel.trim(), zeit.trim() || undefined);
+    setTitel('');
+    setZeit('');
+  }
+
+  return (
+    <Modal visible={sichtbar} animationType="slide" transparent onRequestClose={onAbbrechen}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.dialogHintergrund}
+      >
+        <View style={styles.dialog}>
+          <View style={styles.dialogKopf}>
+            <Pressable onPress={onAbbrechen} style={styles.dialogKnopfLinks}>
+              <Text style={styles.dialogAbbrechen}>Abbrechen</Text>
+            </Pressable>
+            <Text style={styles.dialogTitel}>Neuer Termin</Text>
+            <Pressable onPress={sichern} style={styles.dialogKnopfRechts} disabled={!titel.trim()}>
+              <Text style={[styles.dialogSichern, !titel.trim() && { opacity: 0.35 }]}>Sichern</Text>
+            </Pressable>
+          </View>
+
+          <TextInput
+            style={styles.dialogFeld}
+            value={titel}
+            onChangeText={setTitel}
+            placeholder="Worum geht es?"
+            placeholderTextColor={farben.schwach}
+            autoFocus
+            returnKeyType="done"
+            onSubmitEditing={sichern}
+          />
+
+          <Text style={styles.dialogBeschriftung}>Wann</Text>
+          <View style={styles.dialogDatumZeile}>
+            <Pressable onPress={() => setDatum(plusTage(datum, -1))} style={styles.pfeilFeld}>
+              <Text style={styles.pfeil}>‹</Text>
+            </Pressable>
+            <Text style={styles.dialogDatum}>{datumLesbar(datum)}</Text>
+            <Pressable onPress={() => setDatum(plusTage(datum, 1))} style={styles.pfeilFeld}>
+              <Text style={styles.pfeil}>›</Text>
+            </Pressable>
+          </View>
+
+          <Text style={styles.dialogBeschriftung}>Uhrzeit, leer heißt ganztägig</Text>
+          <View style={styles.dialogChips}>
+            {['', '08:00', '09:00', '12:00', '14:00', '17:00', '19:00'].map((z) => (
+              <Pressable
+                key={z || 'ganz'}
+                onPress={() => setZeit(z)}
+                style={[styles.dialogChip, zeit === z && styles.dialogChipAktiv]}
+              >
+                <Text style={[styles.dialogChipText, zeit === z && styles.dialogChipTextAktiv]}>
+                  {z || 'ganztägig'}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+          <TextInput
+            style={styles.dialogFeld}
+            value={zeit}
+            onChangeText={setZeit}
+            placeholder="oder eigene Uhrzeit, z. B. 15:45"
+            placeholderTextColor={farben.schwach}
+            keyboardType="numbers-and-punctuation"
+          />
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
   );
 }
 
@@ -197,6 +361,71 @@ function MonatsRaster({
 const styles = StyleSheet.create({
   sicher: { flex: 1, backgroundColor: farben.grund },
   kopfBlock: { paddingHorizontal: abstand.l, paddingTop: abstand.s, gap: abstand.m },
+  titelZeile: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  screenTitel: { ...schrift.titel, color: farben.text },
+  titelAktionen: { flexDirection: 'row', alignItems: 'center', gap: abstand.s },
+  heuteKnopf: {
+    borderWidth: 1,
+    borderColor: '#ddd6fe',
+    backgroundColor: farben.akzentSchwach,
+    borderRadius: radius.rund,
+    paddingHorizontal: abstand.m,
+    minHeight: 36,
+    justifyContent: 'center',
+  },
+  heuteKnopfText: { color: farben.akzent, fontWeight: '600', fontSize: 14 },
+  plusKnopf: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.rund,
+    backgroundColor: farben.akzent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  plusText: { color: '#fff', fontSize: 26, lineHeight: 30 },
+  pfeilFeld: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  eintragAktion: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  dialogHintergrund: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.35)' },
+  dialog: {
+    backgroundColor: farben.grund,
+    borderTopLeftRadius: radius.gross,
+    borderTopRightRadius: radius.gross,
+    padding: abstand.l,
+    gap: abstand.s,
+    paddingBottom: abstand.xl * 1.5,
+  },
+  dialogKopf: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  dialogKnopfLinks: { minWidth: 88, minHeight: 44, justifyContent: 'center' },
+  dialogKnopfRechts: { minWidth: 88, minHeight: 44, justifyContent: 'center', alignItems: 'flex-end' },
+  dialogTitel: { ...schrift.titel, fontSize: 17, color: farben.text },
+  dialogAbbrechen: { color: farben.gedaempft, fontSize: 16 },
+  dialogSichern: { color: farben.akzent, fontSize: 16, fontWeight: '600' },
+  dialogFeld: {
+    borderWidth: 1,
+    borderColor: farben.rand,
+    borderRadius: radius.m,
+    paddingHorizontal: abstand.m,
+    paddingVertical: abstand.m,
+    fontSize: 16,
+    color: farben.text,
+    minHeight: 48,
+  },
+  dialogBeschriftung: { fontSize: 13, color: farben.gedaempft, marginTop: abstand.s },
+  dialogDatumZeile: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  dialogDatum: { fontSize: 17, color: farben.text, fontWeight: '600' },
+  dialogChips: { flexDirection: 'row', flexWrap: 'wrap', gap: abstand.s },
+  dialogChip: {
+    borderWidth: 1,
+    borderColor: farben.rand,
+    borderRadius: radius.rund,
+    paddingHorizontal: abstand.m,
+    paddingVertical: abstand.s,
+    minHeight: 40,
+    justifyContent: 'center',
+  },
+  dialogChipAktiv: { backgroundColor: farben.akzentSchwach, borderColor: '#ddd6fe' },
+  dialogChipText: { color: farben.gedaempft, fontSize: 14 },
+  dialogChipTextAktiv: { color: farben.akzent, fontWeight: '600' },
   umschalter: { flexDirection: 'row', backgroundColor: farben.flaeche, borderRadius: radius.m, padding: 3 },
   umschaltKnopf: { flex: 1, paddingVertical: abstand.s, borderRadius: radius.s, alignItems: 'center' },
   umschaltAktiv: { backgroundColor: farben.grund, boxShadow: '0 1px 3px rgba(0,0,0,0.06)', elevation: 1 },

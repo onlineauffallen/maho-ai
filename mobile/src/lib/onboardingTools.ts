@@ -5,31 +5,39 @@
 import { useProfileStore, MAX_PROFILE_CHARS, MAX_CATEGORIES } from '@/lib/profileStore';
 import type { ToolAction } from '@/lib/tools';
 
-export function getOnboardingToolDefinitions() {
-  return [
-    {
-      type: 'function',
-      function: {
-        name: 'update_profile',
-        description:
-          'Speichert, was du über den Nutzer gelernt hast. Ruf das laufend auf, nicht erst am Ende. Übergib immer den vollständigen neuen Stand, nicht nur die Ergänzung.',
-        parameters: {
-          type: 'object',
-          properties: {
-            name: { type: 'string', description: 'Vorname oder gewünschte Anrede' },
-            basics: {
-              type: 'string',
-              description: `Was den Nutzer ausmacht: Lebensbereiche, Ziele, Gewohnheiten. Stichpunkte, eine Zeile pro Sache. Maximal ${MAX_PROFILE_CHARS} Zeichen, das ist ein hartes Limit.`,
-            },
-            categories: {
-              type: 'array',
-              items: { type: 'string' },
-              description: `Bereiche, nach denen der Nutzer seine Aufgaben getrennt haben will, z. B. Firmennamen oder "Privat". Maximal ${MAX_CATEGORIES}.`,
-            },
-          },
+/**
+ * Das Profil-Werkzeug gilt auch im Alltag. Vorher gab es update_profile nur im
+ * Kennenlernen, und danach konnte niemand mehr etwas in die Grundeinstellungen
+ * schreiben: alles Neue landete im automatischen Gedächtnis, das lief voll,
+ * während das Profil bei ein paar Zeilen stehen blieb.
+ */
+export const profilWerkzeug = {
+  type: 'function',
+  function: {
+    name: 'update_profile',
+    description:
+      'Speichert, was dauerhaft über den Nutzer gilt: Lebensumstände, Arbeit, Familie, feste Gewohnheiten, Vorlieben im Umgang mit dir. Ruf das auf, sobald du so etwas erfährst, auch mitten im Alltag. Übergib immer den vollständigen neuen Stand, nicht nur die Ergänzung.',
+    parameters: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Vorname oder gewünschte Anrede' },
+        basics: {
+          type: 'string',
+          description: `Was den Nutzer ausmacht: Lebensumstände, Arbeit, Familie, Ziele, Gewohnheiten. Stichpunkte, eine Zeile pro Sache, jede kurz. Maximal ${MAX_PROFILE_CHARS} Zeichen, hartes Limit. Keine Termine und keine Aufgaben, die stehen woanders.`,
+        },
+        categories: {
+          type: 'array',
+          items: { type: 'string' },
+          description: `Lebensbereiche, in denen Aufgaben anfallen, z. B. "Arbeit", "Familie", "Gesundheit" oder ein Firmenname. Lege sie an, sobald ein solcher Bereich erkennbar ist, ohne extra nachzufragen. Maximal ${MAX_CATEGORIES}.`,
         },
       },
     },
+  },
+} as const;
+
+export function getOnboardingToolDefinitions() {
+  return [
+    profilWerkzeug,
     {
       type: 'function',
       function: {

@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import {
   Alert,
+  Platform,
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -14,6 +16,7 @@ import { useProfileStore, MAX_PROFILE_CHARS } from '@/lib/profileStore';
 import { useMemoryStore, MAX_MEMORY_CHARS } from '@/lib/memory';
 import { useChatStore } from '@/lib/chatStore';
 import { useTodoStore } from '@/lib/todoStore';
+import { useCalendarStore } from '@/lib/calendarStore';
 import { alleTermineLoeschen } from '@/lib/kalender';
 import { useFollowupStore } from '@/lib/followupStore';
 import { datumLesbar } from '@/lib/ids';
@@ -80,6 +83,38 @@ export default function EinstellungenScreen() {
         },
       ]
     );
+  }
+
+  /**
+   * Alles herausgeben, was gespeichert ist. Zwei Gründe: die DSGVO verlangt
+   * Datenübertragbarkeit, und beim Nachvollziehen eines Fehlers ist der echte
+   * Verlauf durch nichts zu ersetzen.
+   */
+  async function datenExportieren() {
+    const daten = {
+      exportiertAm: new Date().toISOString(),
+      profil: useProfileStore.getState(),
+      gedaechtnis: memory,
+      chat: chat.messages,
+      aufgaben: todos.todos,
+      termine: useCalendarStore.getState().events,
+      wiedervorlagen: followups.wiedervorlagen,
+    };
+    const text = JSON.stringify(daten, null, 2);
+
+    if (Platform.OS === 'web') {
+      // Im Browser als Datei zum Herunterladen.
+      const blob = new Blob([text], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `maho-daten-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setHinweis('Datei wurde heruntergeladen.');
+      return;
+    }
+    await Share.share({ message: text });
   }
 
   const gedaechtnisZeilen = memory.split('\n').filter((z) => z.trim());
@@ -204,6 +239,9 @@ export default function EinstellungenScreen() {
             Maho denkt mit einem Sprachmodell von OpenAI. Was du schreibst, und was hier oben
             gespeichert ist, wird dorthin übertragen, um die Antwort zu erzeugen.
           </Text>
+          <Pressable onPress={datenExportieren} style={styles.aktionZeile}>
+            <Text style={styles.aktionText}>Meine Daten exportieren</Text>
+          </Pressable>
           <Pressable
             onPress={() =>
               Alert.alert('Chatverlauf löschen?', 'Die Unterhaltung wird gelöscht. Was Maho gelernt hat, bleibt.', [

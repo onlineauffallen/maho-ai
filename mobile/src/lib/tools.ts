@@ -7,6 +7,7 @@ import { terminAnlegen, terminAendern, terminLoeschen } from '@/lib/kalender';
 import { useTodoStore } from '@/lib/todoStore';
 import { useProfileStore, resolveCategory, MAX_CATEGORIES } from '@/lib/profileStore';
 import { useFollowupStore } from '@/lib/followupStore';
+import { profilWerkzeug, executeOnboardingTool } from '@/lib/onboardingTools';
 import type { Vorschlag, VorschlagsArt } from '@/lib/vorschlaege';
 import { alsDatum, newId, today } from '@/lib/ids';
 
@@ -47,6 +48,10 @@ export function getToolDefinitions() {
     : 'Es gibt noch keine Kategorien. Vergib eine, wenn der Nutzer erkennbar zwischen Bereichen trennt (z. B. Firmenname oder "Privat").';
 
   return [
+    // Auch im Alltag: erfährt Maho etwas Dauerhaftes über den Nutzer, gehört das
+    // ins Profil und nicht ins automatische Gedächtnis, das nach jedem
+    // Wortwechsel neu geschrieben wird.
+    profilWerkzeug,
     {
       type: 'function',
       function: {
@@ -223,6 +228,9 @@ export function executeTool(name: string, args: Record<string, unknown>): ToolEr
   const todo = useTodoStore.getState();
 
   switch (name) {
+    case 'update_profile':
+      return executeOnboardingTool(name, args);
+
     case 'create_calendar_event': {
       const datum = String(args.date ?? '');
       if (!istDatum(datum)) return { result: FALSCHES_DATUM(datum) };
