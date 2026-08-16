@@ -13,6 +13,7 @@
     "expo-glass-effect": "~57.0.1",
     "expo-image": "~57.0.3",
     "expo-linking": "~57.0.6",
+    "expo-notifications": "~57.0.11",
     "expo-router": "~57.0.13",
     "expo-splash-screen": "~57.0.6",
     "expo-status-bar": "~57.0.1",
@@ -40,7 +41,8 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "test": "TZ=Europe/Vienna node tests/erinnerungszeit.ts"
   },
   "private": true
 }
