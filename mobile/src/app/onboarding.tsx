@@ -146,22 +146,26 @@ function Zusammenfassung() {
 
   return (
     <SafeAreaView style={stil.sicher}>
-      <ScrollView contentContainerStyle={stil.inhalt}>
-        <Text style={stil.titel}>Das hab ich mir gemerkt</Text>
+      <ScrollView contentContainerStyle={stil.inhalt} showsVerticalScrollIndicator={false}>
+        <Text style={[schrift.gross, { color: f.tinte }]}>Das hab ich mir gemerkt</Text>
 
         <View style={stil.block}>
-          <Text style={stil.beschriftung}>Ich nenne dich</Text>
-          <Text style={stil.wert}>{name || 'einfach du'}</Text>
+          <Text style={stil.abschnitt}>Ich nenne dich</Text>
+          <View style={stil.karte}>
+            <Text style={[schrift.normal, { color: f.tinte }]}>{name || 'einfach du'}</Text>
+          </View>
         </View>
 
         {!!basics && (
           <View style={stil.block}>
-            <Text style={stil.beschriftung}>Über dich</Text>
-            <Text style={stil.wert}>{basics}</Text>
+            <Text style={stil.abschnitt}>Über dich</Text>
+            <View style={stil.karte}>
+              <Text style={[schrift.normal, { color: f.tinte }]}>{basics}</Text>
+            </View>
             <View style={stil.balkenRahmen}>
               <View style={[stil.balken, { width: `${Math.min(100, (belegt / MAX_PROFILE_CHARS) * 100)}%` }]} />
             </View>
-            <Text style={stil.klein}>
+            <Text style={[schrift.klein, { color: f.gedaempft }]}>
               {belegt} von {MAX_PROFILE_CHARS} Zeichen. Wird es eng, verdichte ich das Wichtigste.
             </Text>
           </View>
@@ -169,7 +173,7 @@ function Zusammenfassung() {
 
         {categories.length > 0 && (
           <View style={stil.block}>
-            <Text style={stil.beschriftung}>Deine Bereiche</Text>
+            <Text style={stil.abschnitt}>Deine Bereiche</Text>
             <View style={stil.chipZeile}>
               {categories.map((k) => (
                 <View key={k} style={stil.chip}>
@@ -180,16 +184,16 @@ function Zusammenfassung() {
           </View>
         )}
 
-        <Text style={stil.klein}>
+        <Text style={[schrift.klein, { color: f.gedaempft }]}>
           Das kannst du jederzeit unter Einstellungen ändern oder löschen.
         </Text>
 
         <Pressable
           onPress={() => setOnboardingDone(true)}
-          style={({ pressed }) => [stil.knopf, pressed && { opacity: 0.7 }]}
+          style={({ pressed }) => [stil.knopf, pressed && { opacity: 0.8 }]}
           accessibilityRole="button"
         >
-          <Text style={stil.knopfText}>Passt, los geht&apos;s</Text>
+          <Text style={[schrift.betont, { color: f.aufAkzent }]}>Passt, los geht&apos;s</Text>
         </Pressable>
       </ScrollView>
     </SafeAreaView>
@@ -198,39 +202,41 @@ function Zusammenfassung() {
 
 const stile = (f: Farben) =>
   StyleSheet.create({
-  sicher: { flex: 1, backgroundColor: f.papier },
-  inhalt: { padding: abstand.l, gap: abstand.l },
-  titel: { ...schrift.titel, color: f.tinte, marginTop: abstand.l },
-  block: { gap: abstand.s },
-  beschriftung: { ...schrift.abschnitt, color: f.gedaempft, textTransform: 'uppercase' },
-  wert: { fontSize: 16, color: f.tinte, lineHeight: 23 },
-  klein: { fontSize: 13, color: f.schwach },
-  balkenRahmen: { height: 6, backgroundColor: f.flaeche, borderRadius: radius.rund, overflow: 'hidden' },
-  balken: { height: 6, backgroundColor: f.weg, borderRadius: radius.rund },
-  chipZeile: { flexDirection: 'row', flexWrap: 'wrap', gap: abstand.s },
-  chip: {
-    backgroundColor: f.wegSchwach,
-    borderColor: '#ddd6fe',
-    borderWidth: 1,
-    borderRadius: radius.rund,
-    paddingHorizontal: abstand.m,
-    paddingVertical: abstand.xs + 2,
-  },
-  chipText: { color: f.weg, fontSize: 14 },
-  knopf: {
-    backgroundColor: f.weg,
-    borderRadius: radius.m,
-    paddingVertical: abstand.m,
-    alignItems: 'center',
-    marginTop: abstand.s,
-  },
-  knopfText: { color: '#fff', fontWeight: '600', fontSize: 16 },
-  ueberspringen: {
-    alignSelf: 'center',
-    paddingVertical: abstand.m,
-    paddingHorizontal: abstand.l,
-    minHeight: 44,
-    justifyContent: 'center',
-  },
-  ueberspringenText: { color: f.gedaempft, fontSize: 15 },
-});
+    sicher: { flex: 1, backgroundColor: f.papier },
+    inhalt: { padding: abstand.l, gap: abstand.xl, paddingBottom: abstand.xxl },
+    block: { gap: abstand.s },
+    abschnitt: { ...schrift.titel, color: f.gedaempft, fontSize: 17 },
+    karte: {
+      backgroundColor: f.flaeche,
+      borderRadius: radius.m,
+      paddingHorizontal: abstand.l,
+      paddingVertical: abstand.m,
+    },
+    balkenRahmen: { height: 6, backgroundColor: f.flaeche, borderRadius: radius.rund, overflow: 'hidden' },
+    balken: { height: 6, backgroundColor: f.weg, borderRadius: radius.rund },
+    chipZeile: { flexDirection: 'row', flexWrap: 'wrap', gap: abstand.s },
+    chip: {
+      backgroundColor: f.flaeche,
+      borderRadius: radius.rund,
+      paddingHorizontal: abstand.l,
+      minHeight: 42,
+      justifyContent: 'center',
+    },
+    chipText: { fontFamily: 'Manrope_500Medium', fontSize: 16, color: f.signalText },
+    knopf: {
+      backgroundColor: f.weg,
+      borderRadius: radius.gross,
+      minHeight: 58,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginTop: abstand.s,
+    },
+    ueberspringen: {
+      alignSelf: 'center',
+      minHeight: 44,
+      paddingHorizontal: abstand.l,
+      justifyContent: 'center',
+      paddingBottom: abstand.s,
+    },
+    ueberspringenText: { ...schrift.klein, color: f.gedaempft },
+  });
