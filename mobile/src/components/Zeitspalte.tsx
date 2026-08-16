@@ -37,12 +37,16 @@ export function Zeile({
         <Text
           style={[
             schrift.zeit,
-            { color: hervorgehoben ? f.signal : gedimmt ? f.schwach : f.tinte },
+            { color: hervorgehoben ? f.signalText : gedimmt ? f.schwach : f.tinte },
           ]}
         >
           {zeit}
         </Text>
-        {!!zusatz && <Text style={[schrift.winzig, { color: f.schwach }]}>{zusatz}</Text>}
+        {!!zusatz && (
+          <Text style={[schrift.winzig, { color: hervorgehoben ? f.signalText : f.schwach }]}>
+            {zusatz}
+          </Text>
+        )}
       </View>
 
       {/* Linie und Punkt: der Punkt sitzt auf der Höhe der ersten Textzeile. */}
@@ -59,7 +63,7 @@ export function Zeile({
         {/* Auch bei der letzten Zeile läuft die Schiene kurz aus, statt hart
             aufzuhören. Ein Punkt ohne Linie wirkt wie ein Aufzählungszeichen,
             und genau das soll er nicht sein. */}
-        <View style={[stil.linie, { backgroundColor: f.linie }, letzte && stil.linieAuslauf]} />
+        <View style={[stil.linie, { backgroundColor: f.schiene }, letzte && stil.linieAuslauf]} />
       </View>
 
       <View style={stil.inhalt}>{children}</View>
@@ -72,7 +76,7 @@ export function JetztMarke({ zeit }: { zeit: string }) {
   const f = useFarben();
   return (
     <View style={stil.jetzt}>
-      <Text style={[schrift.winzig, stil.jetztZeit, { color: f.signal }]}>{zeit}</Text>
+      <Text style={[schrift.winzig, stil.jetztZeit, { color: f.signalText }]}>{zeit}</Text>
       <View style={[stil.jetztPunkt, { backgroundColor: f.signal }]} />
       <View style={[stil.jetztLinie, { backgroundColor: f.signal }]} />
     </View>

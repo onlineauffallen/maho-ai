@@ -1,13 +1,15 @@
 import { useEffect } from 'react';
-import { ActivityIndicator, AppState, useColorScheme, View } from 'react-native';
+import { ActivityIndicator, AppState, View } from 'react-native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useFonts, Barlow_400Regular, Barlow_500Medium } from '@expo-google-fonts/barlow';
+import { useFonts } from 'expo-font';
+import { Fraunces_600SemiBold, Fraunces_700Bold } from '@expo-google-fonts/fraunces';
 import {
-  BarlowSemiCondensed_500Medium,
-  BarlowSemiCondensed_600SemiBold,
-  BarlowSemiCondensed_700Bold,
-} from '@expo-google-fonts/barlow-semi-condensed';
+  Manrope_400Regular,
+  Manrope_500Medium,
+  Manrope_600SemiBold,
+  Manrope_700Bold,
+} from '@expo-google-fonts/manrope';
 import { useProfileStore } from '@/lib/profileStore';
 import { useCalendarStore } from '@/lib/calendarStore';
 import { useFollowupStore } from '@/lib/followupStore';
@@ -18,7 +20,7 @@ import { useFarben } from '@/lib/theme';
 export default function RootLayout() {
   const hydrated = useHydrated();
   const f = useFarben();
-  const dunkel = useColorScheme() === 'dark';
+
   const onboardingDone = useProfileStore((s) => s.onboardingDone);
   const segmente = useSegments();
   const router = useRouter();
@@ -26,11 +28,12 @@ export default function RootLayout() {
   const wiedervorlagen = useFollowupStore((s) => s.wiedervorlagen);
 
   const [schriftenGeladen] = useFonts({
-    Barlow_400Regular,
-    Barlow_500Medium,
-    BarlowSemiCondensed_500Medium,
-    BarlowSemiCondensed_600SemiBold,
-    BarlowSemiCondensed_700Bold,
+    Fraunces_600SemiBold,
+    Fraunces_700Bold,
+    Manrope_400Regular,
+    Manrope_500Medium,
+    Manrope_600SemiBold,
+    Manrope_700Bold,
   });
 
   // Erinnerungen bei jeder Änderung neu planen. Neu planen statt nachpflegen,
@@ -68,7 +71,7 @@ export default function RootLayout() {
 
   return (
     <>
-      <StatusBar style={dunkel ? 'light' : 'dark'} />
+      <StatusBar style="light" />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: f.papier } }}>
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="onboarding" />

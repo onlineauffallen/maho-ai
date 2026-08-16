@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react';
 import {
-  Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -14,28 +13,19 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTodoStore, type Todo } from '@/lib/todoStore';
 import { useCalendarStore } from '@/lib/calendarStore';
-import {
-  terminAnlegen,
-  terminAendern,
-  terminLoeschen,
-  kalenderZugriffSicherstellen,
-} from '@/lib/kalender';
+import { terminAnlegen, terminLoeschen, kalenderZugriffSicherstellen } from '@/lib/kalender';
 import { useProfileStore, MAX_CATEGORIES } from '@/lib/profileStore';
 import { datumLesbar, plusTage, today } from '@/lib/ids';
 import { abstand, radius, schrift, useFarben, type Farben } from '@/lib/theme';
-import { Zeile } from '@/components/Zeitspalte';
+import { useNachfrage } from '@/components/Nachfrage';
 
 const OHNE = 'Ohne Bereich';
-const WOCHENTAGE = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
 
-/** Was links in der Spalte steht: wann das fällig ist, kurz genug für die Breite. */
-function faelligKurz(due: string | undefined, heute: string): { zeit: string; zusatz?: string } {
-  if (!due) return { zeit: '–' };
-  if (due < heute) return { zeit: 'offen', zusatz: 'überfällig' };
-  if (due === heute) return { zeit: 'heute' };
-  if (due === plusTage(heute, 1)) return { zeit: 'morgen' };
-  const d = new Date(`${due}T12:00:00`);
-  return { zeit: WOCHENTAGE[d.getDay()], zusatz: `${d.getDate()}.${d.getMonth() + 1}.` };
+/** Wann das fällig ist, in der Sprache des Nutzers. */
+function faelligText(due: string | undefined, heute: string): string | undefined {
+  if (!due) return undefined;
+  if (due < heute) return 'überfällig';
+  return datumLesbar(due);
 }
 
 export default function TodosScreen() {
@@ -44,19 +34,29 @@ export default function TodosScreen() {
   const { todos, addTodo, updateTodo, toggleDone, removeTodo } = useTodoStore();
   const events = useCalendarStore((s) => s.events);
   const { categories, addCategory } = useProfileStore();
+  const { frage, dialog } = useNachfrage();
 
   const [filter, setFilter] = useState<string>();
   const [neuOffen, setNeuOffen] = useState(false);
   const [erledigteZeigen, setErledigteZeigen] = useState(false);
   const heute = today();
 
-  function inKalender(todo: Todo) {
-    const datum = todo.due ?? heute;
-    if (todo.eventId && events.some((e) => e.id === todo.eventId)) {
-      terminAendern(todo.eventId, { date: datum });
-      updateTodo(todo.id, { due: datum });
+  /** Hin und zurück: was in den Kalender geht, muss auch wieder heraus. */
+  function kalenderUmschalten(todo: Todo) {
+    const termin = todo.eventId && events.find((e) => e.id === todo.eventId);
+    if (termin) {
+      frage({
+        titel: 'Aus dem Kalender nehmen?',
+        text: `„${todo.text}" bleibt als Aufgabe stehen, der Termin verschwindet.`,
+        knopf: 'Entfernen',
+        onBestaetigen: () => {
+          terminLoeschen(termin.id);
+          updateTodo(todo.id, { eventId: undefined });
+        },
+      });
       return;
     }
+    const datum = todo.due ?? heute;
     const ev = terminAnlegen({ title: todo.text, date: datum, todoId: todo.id });
     updateTodo(todo.id, { eventId: ev.id, due: datum });
     void kalenderZugriffSicherstellen();
@@ -64,21 +64,17 @@ export default function TodosScreen() {
 
   function loeschen(todo: Todo) {
     const hatTermin = !!todo.eventId && events.some((e) => e.id === todo.eventId);
-    Alert.alert(
-      'Aufgabe löschen?',
-      hatTermin ? `„${todo.text}" wird gelöscht, samt Termin im Kalender.` : `„${todo.text}" wird gelöscht.`,
-      [
-        { text: 'Abbrechen', style: 'cancel' },
-        {
-          text: 'Löschen',
-          style: 'destructive',
-          onPress: () => {
-            if (todo.eventId) terminLoeschen(todo.eventId);
-            removeTodo(todo.id);
-          },
-        },
-      ]
-    );
+    frage({
+      titel: 'Aufgabe löschen?',
+      text: hatTermin
+        ? `„${todo.text}" wird gelöscht, samt dem Termin im Kalender.`
+        : `„${todo.text}" wird gelöscht.`,
+      knopf: 'Löschen',
+      onBestaetigen: () => {
+        if (todo.eventId) terminLoeschen(todo.eventId);
+        removeTodo(todo.id);
+      },
+    });
   }
 
   const gefiltert = filter ? todos.filter((t) => t.category === filter) : todos;
@@ -106,85 +102,83 @@ export default function TodosScreen() {
       .sort(([a], [b]) => (a === OHNE ? 1 : b === OHNE ? -1 : 0));
   }, [offen, categories]);
 
-  function aufgabenZeile(todo: Todo, letzte: boolean) {
-    const { zeit, zusatz } = faelligKurz(todo.due, heute);
+  function karte(todo: Todo) {
+    const dringend = !!todo.due && todo.due <= heute && !todo.done;
     const ueberfaellig = !!todo.due && todo.due < heute && !todo.done;
+    const faellig = faelligText(todo.due, heute);
     const imKalender = !!todo.eventId && events.some((e) => e.id === todo.eventId);
 
     return (
-      <Zeile
-        key={todo.id}
-        zeit={zeit}
-        zusatz={zusatz}
-        hervorgehoben={ueberfaellig}
-        gedimmt={todo.done}
-        letzte={letzte}
-      >
-        <View style={stil.aufgabe}>
-          <Pressable
-            onPress={() => toggleDone(todo.id)}
-            style={stil.hakenFeld}
-            accessibilityRole="checkbox"
-            accessibilityState={{ checked: todo.done }}
-            accessibilityLabel={todo.text}
-          >
-            <View style={[stil.kasten, todo.done && { backgroundColor: f.gut, borderColor: f.gut }]}>
-              {todo.done && <Text style={stil.haken}>✓</Text>}
-            </View>
-          </Pressable>
+      <View key={todo.id} style={stil.karte}>
+        {/* Die Kante erscheint nur, wenn es drückt. Sonst bleibt die Karte ruhig. */}
+        {dringend && <View style={[stil.kante, ueberfaellig && { backgroundColor: f.warnung }]} />}
 
-          <View style={{ flex: 1 }}>
-            <Text style={[schrift.normal, { color: todo.done ? f.schwach : f.tinte }, todo.done && stil.durch]}>
-              {todo.text}
-            </Text>
-            {imKalender && (
-              <Text style={[schrift.winzig, { color: f.gedaempft }]}>
-                steht am {datumLesbar(todo.due ?? heute)} im Kalender
-              </Text>
-            )}
+        <Pressable
+          onPress={() => toggleDone(todo.id)}
+          style={stil.kreisFeld}
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: todo.done }}
+          accessibilityLabel={todo.text}
+        >
+          <View style={[stil.kreis, todo.done && { backgroundColor: f.gut, borderColor: f.gut }]}>
+            {todo.done && <View style={stil.kreisHaken} />}
           </View>
+        </Pressable>
 
-          {!todo.done && (
-            <Pressable onPress={() => inKalender(todo)} style={stil.aktion} accessibilityLabel="In den Kalender">
-              <View style={[stil.miniRaster, { borderColor: imKalender ? f.weg : f.schwach }]}>
-                <View style={[stil.miniLinie, { backgroundColor: imKalender ? f.weg : f.schwach }]} />
-              </View>
-            </Pressable>
+        <View style={stil.karteText}>
+          <Text style={[schrift.normal, { color: todo.done ? f.schwach : f.tinte }, todo.done && stil.durch]}>
+            {todo.text}
+          </Text>
+          {(faellig || imKalender) && (
+            <Text style={[schrift.klein, { color: ueberfaellig ? f.warnung : f.gedaempft }]}>
+              {faellig}
+              {faellig && imKalender ? ' · ' : ''}
+              {imKalender ? 'im Kalender' : ''}
+            </Text>
           )}
-          <Pressable onPress={() => loeschen(todo)} style={stil.aktion} accessibilityLabel="Löschen">
-            <Text style={[stil.kreuz, { color: f.schwach }]}>✕</Text>
-          </Pressable>
         </View>
-      </Zeile>
+
+        {!todo.done && (
+          <Pressable
+            onPress={() => kalenderUmschalten(todo)}
+            style={stil.aktion}
+            accessibilityLabel={imKalender ? 'Aus dem Kalender nehmen' : 'In den Kalender'}
+          >
+            <KalenderSymbol farben={f} aktiv={imKalender} />
+          </Pressable>
+        )}
+        <Pressable onPress={() => loeschen(todo)} style={stil.aktion} accessibilityLabel="Löschen">
+          <KreuzSymbol farben={f} />
+        </Pressable>
+      </View>
     );
   }
 
   return (
     <SafeAreaView style={stil.sicher} edges={['top']}>
-      <View style={stil.kopfBlock}>
-        <View style={stil.titelZeile}>
+      <ScrollView contentContainerStyle={stil.inhalt} showsVerticalScrollIndicator={false}>
+        <View style={stil.kopf}>
           <View>
             <Text style={[schrift.gross, { color: f.tinte }]}>Aufgaben</Text>
-            <Text style={[schrift.klein, { color: f.schwach }]}>
+            <Text style={[schrift.klein, { color: f.gedaempft }]}>
               {offen.length === 0 ? 'nichts offen' : `${offen.length} offen`}
             </Text>
           </View>
-          <Pressable onPress={() => setNeuOffen(true)} style={stil.plusKnopf} accessibilityLabel="Neue Aufgabe">
-            <Text style={stil.plusText}>+</Text>
+          <Pressable onPress={() => setNeuOffen(true)} style={stil.plus} accessibilityLabel="Neue Aufgabe">
+            <View style={[stil.plusStrich, { width: 20, height: 2.5 }]} />
+            <View style={[stil.plusStrich, { width: 2.5, height: 20, position: 'absolute' }]} />
           </Pressable>
         </View>
 
         {categories.length > 0 && (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={stil.filterZeile}>
-            <Filterchip label="Alle" aktiv={!filter} onPress={() => setFilter(undefined)} farben={f} />
+            <Chip label="Alle" aktiv={!filter} onPress={() => setFilter(undefined)} farben={f} />
             {categories.map((k) => (
-              <Filterchip key={k} label={k} aktiv={filter === k} onPress={() => setFilter(k)} farben={f} />
+              <Chip key={k} label={k} aktiv={filter === k} onPress={() => setFilter(k)} farben={f} />
             ))}
           </ScrollView>
         )}
-      </View>
 
-      <ScrollView contentContainerStyle={stil.inhalt}>
         {offen.length === 0 && (
           <Text style={[schrift.normal, { color: f.gedaempft }]}>
             {todos.length === 0
@@ -194,23 +188,25 @@ export default function TodosScreen() {
         )}
 
         {gruppen.map(([name, liste]) => (
-          <View key={name}>
-            <Text style={[schrift.abschnitt, stil.abschnitt]}>{name.toUpperCase()}</Text>
-            {liste.map((t, i) => aufgabenZeile(t, i === liste.length - 1))}
+          <View key={name} style={stil.gruppe}>
+            <Text style={[schrift.titel, { color: f.gedaempft, fontSize: 17 }]}>{name}</Text>
+            {liste.map(karte)}
           </View>
         ))}
 
         {erledigt.length > 0 && (
-          <View>
+          <View style={stil.gruppe}>
             <Pressable onPress={() => setErledigteZeigen((z) => !z)} style={stil.erledigtKopf}>
-              <Text style={[schrift.abschnitt, stil.abschnitt]}>
-                {erledigteZeigen ? '▾' : '▸'}  {erledigt.length} ERLEDIGT
+              <Text style={[schrift.klein, { color: f.schwach }]}>
+                {erledigteZeigen ? 'Erledigtes ausblenden' : `${erledigt.length} Erledigtes anzeigen`}
               </Text>
             </Pressable>
-            {erledigteZeigen && erledigt.map((t, i) => aufgabenZeile(t, i === erledigt.length - 1))}
+            {erledigteZeigen && erledigt.map(karte)}
           </View>
         )}
       </ScrollView>
+
+      {dialog}
 
       <NeueAufgabe
         sichtbar={neuOffen}
@@ -227,7 +223,33 @@ export default function TodosScreen() {
   );
 }
 
-function Filterchip({
+/** Kalender als weiche Form: abgerundete Fläche mit Kopfleiste. */
+function KalenderSymbol({ farben: f, aktiv }: { farben: Farben; aktiv: boolean }) {
+  const ton = aktiv ? f.signal : f.schwach;
+  return (
+    <View style={{ width: 20, height: 20, borderRadius: 6, borderWidth: 2, borderColor: ton, overflow: 'hidden' }}>
+      <View style={{ height: 5, backgroundColor: ton }} />
+    </View>
+  );
+}
+
+function KreuzSymbol({ farben: f }: { farben: Farben }) {
+  const strich = {
+    position: 'absolute' as const,
+    width: 16,
+    height: 2,
+    borderRadius: 1,
+    backgroundColor: f.schwach,
+  };
+  return (
+    <View style={{ width: 18, height: 18, alignItems: 'center', justifyContent: 'center' }}>
+      <View style={[strich, { transform: [{ rotate: '45deg' }] }]} />
+      <View style={[strich, { transform: [{ rotate: '-45deg' }] }]} />
+    </View>
+  );
+}
+
+function Chip({
   label, aktiv, onPress, farben: f,
 }: { label: string; aktiv: boolean; onPress: () => void; farben: Farben }) {
   const stil = stile(f);
@@ -273,15 +295,8 @@ function NeueAufgabe({
     <Modal visible={sichtbar} animationType="slide" transparent onRequestClose={onAbbrechen}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={stil.dialogHintergrund}>
         <View style={stil.dialog}>
-          <View style={stil.dialogKopf}>
-            <Pressable onPress={onAbbrechen} style={stil.dialogKnopfLinks}>
-              <Text style={[schrift.normal, { color: f.gedaempft }]}>Abbrechen</Text>
-            </Pressable>
-            <Text style={[schrift.titel, { color: f.tinte }]}>Neue Aufgabe</Text>
-            <Pressable onPress={anlegen} style={stil.dialogKnopfRechts} disabled={!text.trim()}>
-              <Text style={[schrift.betont, { color: f.weg }, !text.trim() && { opacity: 0.3 }]}>Anlegen</Text>
-            </Pressable>
-          </View>
+          <View style={stil.griff} />
+          <Text style={[schrift.titel, { color: f.tinte }]}>Neue Aufgabe</Text>
 
           <TextInput
             style={stil.feld}
@@ -294,36 +309,38 @@ function NeueAufgabe({
             onSubmitEditing={anlegen}
           />
 
-          <Text style={[schrift.abschnitt, stil.abschnitt]}>BIS WANN</Text>
+          <Text style={[schrift.klein, { color: f.gedaempft }]}>Bis wann</Text>
           <View style={stil.chipZeile}>
             {faelligkeiten.map((x) => (
-              <Pressable
+              <Chip
                 key={x.wert}
+                label={x.label}
+                aktiv={due === x.wert}
                 onPress={() => setDue(due === x.wert ? undefined : x.wert)}
-                style={[stil.chip, due === x.wert && stil.chipAktiv]}
-              >
-                <Text style={[stil.chipText, due === x.wert && stil.chipTextAktiv]}>{x.label}</Text>
-              </Pressable>
+                farben={f}
+              />
             ))}
           </View>
 
-          <Text style={[schrift.abschnitt, stil.abschnitt]}>BEREICH</Text>
-          <View style={stil.chipZeile}>
-            {categories.map((k) => (
-              <Pressable
-                key={k}
-                onPress={() => setKategorie(kategorie === k ? undefined : k)}
-                style={[stil.chip, kategorie === k && stil.chipAktiv]}
-              >
-                <Text style={[stil.chipText, kategorie === k && stil.chipTextAktiv]}>{k}</Text>
-              </Pressable>
-            ))}
-            {categories.length < MAX_CATEGORIES && (
-              <Pressable onPress={() => setKatFeld((s) => !s)} style={stil.chip}>
-                <Text style={stil.chipText}>+ neuer Bereich</Text>
-              </Pressable>
-            )}
-          </View>
+          {categories.length > 0 && (
+            <>
+              <Text style={[schrift.klein, { color: f.gedaempft }]}>Bereich</Text>
+              <View style={stil.chipZeile}>
+                {categories.map((k) => (
+                  <Chip
+                    key={k}
+                    label={k}
+                    aktiv={kategorie === k}
+                    onPress={() => setKategorie(kategorie === k ? undefined : k)}
+                    farben={f}
+                  />
+                ))}
+                {categories.length < MAX_CATEGORIES && (
+                  <Chip label="+ neuer Bereich" aktiv={false} onPress={() => setKatFeld((s) => !s)} farben={f} />
+                )}
+              </View>
+            </>
+          )}
 
           {katFeld && (
             <View style={stil.katZeile}>
@@ -348,6 +365,19 @@ function NeueAufgabe({
               </Pressable>
             </View>
           )}
+
+          <View style={stil.dialogKnoepfe}>
+            <Pressable onPress={onAbbrechen} style={stil.abbrechen}>
+              <Text style={[schrift.betont, { color: f.gedaempft }]}>Abbrechen</Text>
+            </Pressable>
+            <Pressable
+              onPress={anlegen}
+              disabled={!text.trim()}
+              style={[stil.anlegen, !text.trim() && { opacity: 0.35 }]}
+            >
+              <Text style={[schrift.betont, { color: f.aufAkzent }]}>Anlegen</Text>
+            </Pressable>
+          </View>
         </View>
       </KeyboardAvoidingView>
     </Modal>
@@ -357,53 +387,107 @@ function NeueAufgabe({
 const stile = (f: Farben) =>
   StyleSheet.create({
     sicher: { flex: 1, backgroundColor: f.papier },
-    kopfBlock: { paddingHorizontal: abstand.l, paddingTop: abstand.s, gap: abstand.m, paddingBottom: abstand.m },
-    titelZeile: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
-    plusKnopf: {
-      width: 44, height: 44, borderRadius: radius.s, backgroundColor: f.weg,
-      alignItems: 'center', justifyContent: 'center',
+    inhalt: { paddingHorizontal: abstand.l, paddingTop: abstand.s, paddingBottom: abstand.xxl * 2, gap: abstand.l },
+    kopf: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
+    plus: {
+      width: 52,
+      height: 52,
+      borderRadius: radius.rund,
+      backgroundColor: f.weg,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
-    plusText: { color: f.aufAkzent, fontSize: 28, lineHeight: 32, fontFamily: 'BarlowSemiCondensed_500Medium' },
+    plusStrich: { backgroundColor: f.aufAkzent, borderRadius: 2 },
     filterZeile: { gap: abstand.s, paddingRight: abstand.l },
-    inhalt: { paddingHorizontal: abstand.l, paddingBottom: abstand.xxl * 2, gap: abstand.l },
-    abschnitt: { color: f.schwach, paddingBottom: abstand.s, paddingTop: abstand.s },
-    aufgabe: { flexDirection: 'row', alignItems: 'flex-start', gap: abstand.s },
-    hakenFeld: { width: 30, height: 30, alignItems: 'flex-start', justifyContent: 'center' },
-    kasten: {
-      width: 21, height: 21, borderWidth: 2, borderColor: f.schwach, borderRadius: radius.s,
-      alignItems: 'center', justifyContent: 'center',
+    gruppe: { gap: abstand.s },
+    karte: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: f.flaeche,
+      borderRadius: radius.m,
+      paddingVertical: abstand.m,
+      paddingRight: abstand.s,
+      paddingLeft: abstand.m,
+      gap: abstand.s,
+      overflow: 'hidden',
     },
-    haken: { color: f.aufAkzent, fontSize: 13, lineHeight: 16 },
+    kante: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, backgroundColor: f.signal },
+    kreisFeld: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+    kreis: {
+      width: 24,
+      height: 24,
+      borderRadius: radius.rund,
+      borderWidth: 2,
+      borderColor: f.schwach,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    kreisHaken: { width: 9, height: 9, borderRadius: radius.rund, backgroundColor: f.papier },
+    karteText: { flex: 1, gap: 1, paddingVertical: 2 },
     durch: { textDecorationLine: 'line-through' },
-    aktion: { width: 32, height: 34, alignItems: 'center', justifyContent: 'center' },
-    miniRaster: { width: 15, height: 15, borderWidth: 1.5, borderRadius: 2 },
-    miniLinie: { height: 1.5, width: '100%', marginTop: 2 },
-    kreuz: { fontSize: 15 },
+    aktion: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
     erledigtKopf: { minHeight: 44, justifyContent: 'center' },
     chip: {
-      borderWidth: 1, borderColor: f.linie, borderRadius: radius.s,
-      paddingHorizontal: abstand.m, minHeight: 38, justifyContent: 'center',
+      borderRadius: radius.rund,
+      backgroundColor: f.flaeche,
+      paddingHorizontal: abstand.l,
+      minHeight: 42,
+      justifyContent: 'center',
     },
-    chipAktiv: { backgroundColor: f.tinte, borderColor: f.tinte },
-    chipText: { fontFamily: 'BarlowSemiCondensed_500Medium', fontSize: 16, color: f.gedaempft },
-    chipTextAktiv: { color: f.aufDunkel },
+    chipAktiv: { backgroundColor: f.weg },
+    chipText: { fontFamily: 'Manrope_500Medium', fontSize: 16, color: f.gedaempft },
+    chipTextAktiv: { color: f.aufAkzent, fontFamily: 'Manrope_600SemiBold' },
     chipZeile: { flexDirection: 'row', flexWrap: 'wrap', gap: abstand.s },
-    dialogHintergrund: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(16,49,78,0.4)' },
+    dialogHintergrund: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.55)' },
     dialog: {
-      backgroundColor: f.papier, borderTopLeftRadius: radius.gross, borderTopRightRadius: radius.gross,
-      padding: abstand.l, gap: abstand.s, paddingBottom: abstand.xxl,
+      backgroundColor: f.papier,
+      borderTopLeftRadius: radius.gross,
+      borderTopRightRadius: radius.gross,
+      padding: abstand.l,
+      gap: abstand.m,
+      paddingBottom: abstand.xxl,
     },
-    dialogKopf: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: abstand.s },
-    dialogKnopfLinks: { minWidth: 92, minHeight: 44, justifyContent: 'center' },
-    dialogKnopfRechts: { minWidth: 92, minHeight: 44, justifyContent: 'center', alignItems: 'flex-end' },
+    griff: {
+      width: 40,
+      height: 4,
+      borderRadius: 2,
+      backgroundColor: f.linie,
+      alignSelf: 'center',
+      marginBottom: abstand.s,
+    },
     feld: {
-      borderWidth: 1, borderColor: f.linie, backgroundColor: f.flaeche, borderRadius: radius.s,
-      paddingHorizontal: abstand.m, paddingVertical: abstand.m,
-      fontFamily: 'Barlow_400Regular', fontSize: 17, color: f.tinte, minHeight: 50,
+      backgroundColor: f.flaeche,
+      borderRadius: radius.m,
+      paddingHorizontal: abstand.l,
+      paddingVertical: abstand.m,
+      fontFamily: 'Manrope_400Regular',
+      fontSize: 18,
+      color: f.tinte,
+      minHeight: 54,
     },
     katZeile: { flexDirection: 'row', gap: abstand.s, alignItems: 'center' },
     katKnopf: {
-      backgroundColor: f.weg, borderRadius: radius.s, paddingHorizontal: abstand.l,
-      minHeight: 50, justifyContent: 'center',
+      backgroundColor: f.weg,
+      borderRadius: radius.m,
+      paddingHorizontal: abstand.l,
+      minHeight: 54,
+      justifyContent: 'center',
+    },
+    dialogKnoepfe: { flexDirection: 'row', gap: abstand.s, marginTop: abstand.s },
+    abbrechen: {
+      flex: 1,
+      backgroundColor: f.flaeche,
+      borderRadius: radius.m,
+      minHeight: 54,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    anlegen: {
+      flex: 2,
+      backgroundColor: f.weg,
+      borderRadius: radius.m,
+      minHeight: 54,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
   });

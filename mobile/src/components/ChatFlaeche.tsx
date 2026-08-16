@@ -42,11 +42,9 @@ type Props = {
 /**
  * Das Gespräch.
  *
- * Maho bekommt bewusst keine Sprechblase, sondern steht als Text auf dem
- * Papier, mit einer schmalen Linie links. Das nimmt der Oberfläche das
- * Chatbot-Hafte: es liest sich wie eine Auskunft, nicht wie ein Messenger.
- * Der Nutzer dagegen schickt sichtbar etwas ab, seine Zeilen sitzen als
- * dunkler Block rechts.
+ * Maho antwortet in ruhigen Karten, der Nutzer schickt sichtbar etwas ab: seine
+ * Zeilen sitzen als Messingfläche rechts. Damit ist auf einen Blick klar, wer
+ * gerade spricht, ohne Namen und ohne Zeitstempel.
  */
 export function ChatFlaeche({
   titel,
@@ -98,7 +96,6 @@ export function ChatFlaeche({
               </View>
             ) : (
               <View key={i} style={stil.mahoBlock}>
-                <View style={stil.mahoLinie} />
                 <View style={stil.mahoInhalt}>
                   <Text style={[schrift.normal, { color: f.tinte }]}>{m.text}</Text>
                   {m.actions?.map((a, j) => (
@@ -122,9 +119,8 @@ export function ChatFlaeche({
 
           {busy && (
             <View style={stil.mahoBlock}>
-              <View style={stil.mahoLinie} />
               <View style={stil.mahoInhalt}>
-                <ActivityIndicator size="small" color={f.schwach} />
+                <ActivityIndicator size="small" color={f.signal} />
               </View>
             </View>
           )}
@@ -134,7 +130,7 @@ export function ChatFlaeche({
               <Text style={[schrift.klein, { color: f.warnung }]}>{fehler}</Text>
               {!!onWiederholen && (
                 <Pressable onPress={onWiederholen} style={stil.fehlerKnopf}>
-                  <Text style={[schrift.klein, { color: f.warnung, fontFamily: 'Barlow_500Medium' }]}>
+                  <Text style={[schrift.klein, { color: f.warnung, fontFamily: 'Manrope_500Medium' }]}>
                     Nochmal versuchen
                   </Text>
                 </Pressable>
@@ -189,8 +185,8 @@ export function ChatFlaeche({
 }
 
 /**
- * Ein Vorschlag ist ein Aushang, kein Dialogfeld: Signalstreifen links, klare
- * Kante, zwei Knöpfe. Annehmen kostet keinen weiteren Aufruf beim Anbieter.
+ * Ein Vorschlag hebt sich ab: eigene Fläche, Messingkante links, zwei Knöpfe.
+ * Annehmen kostet keinen weiteren Aufruf beim Anbieter.
  */
 function VorschlagsKarte({
   vorschlag, farben: f, onAnnehmen, onAblehnen,
@@ -198,6 +194,7 @@ function VorschlagsKarte({
   const stil = stile(f);
   return (
     <View style={stil.karte}>
+      <View style={stil.karteKante} />
       <View style={stil.karteInhalt}>
         {!!vorschlag.anlass && (
           <Text style={[schrift.winzig, { color: f.gedaempft }]}>{vorschlag.anlass}</Text>
@@ -232,88 +229,85 @@ const stile = (f: Farben) =>
     verlaufInhalt: { paddingVertical: abstand.m, gap: abstand.l },
     zeileRechts: { alignItems: 'flex-end' },
     blaseIch: {
-      backgroundColor: f.tinte,
-      paddingHorizontal: abstand.m,
-      paddingVertical: abstand.s,
-      borderRadius: radius.m,
-      borderTopRightRadius: radius.s,
+      backgroundColor: f.weg,
+      paddingHorizontal: abstand.l,
+      paddingVertical: abstand.m,
+      borderRadius: radius.gross,
+      borderBottomRightRadius: radius.s,
       maxWidth: '86%',
     },
-    mahoBlock: { flexDirection: 'row', gap: abstand.m, maxWidth: '96%' },
-    mahoLinie: { width: 2, backgroundColor: f.signal, borderRadius: 1 },
-    mahoInhalt: { flex: 1, gap: abstand.s },
+    mahoBlock: { flexDirection: 'row', maxWidth: '92%' },
+    mahoInhalt: {
+      flex: 1,
+      gap: abstand.s,
+      backgroundColor: f.flaeche,
+      borderRadius: radius.gross,
+      borderBottomLeftRadius: radius.s,
+      paddingHorizontal: abstand.l,
+      paddingVertical: abstand.m,
+    },
     aktion: {
       alignSelf: 'flex-start',
-      borderLeftWidth: 2,
-      borderLeftColor: f.gut,
       backgroundColor: f.gutSchwach,
-      paddingHorizontal: abstand.s,
-      paddingVertical: 3,
-      borderRadius: radius.s,
+      paddingHorizontal: abstand.m,
+      paddingVertical: abstand.xs + 2,
+      borderRadius: radius.rund,
     },
     karte: {
-      backgroundColor: f.flaeche,
-      borderWidth: 1,
-      borderColor: f.linie,
+      flexDirection: 'row',
+      backgroundColor: f.flaecheHoch,
       borderRadius: radius.m,
       overflow: 'hidden',
       marginTop: abstand.xs,
     },
-    karteInhalt: { flex: 1, padding: abstand.m, gap: 2 },
+    karteKante: { width: 4, backgroundColor: f.signal },
+    karteInhalt: { flex: 1, padding: abstand.l, gap: 3 },
     karteKnoepfe: { flexDirection: 'row', gap: abstand.s, marginTop: abstand.s },
     karteJa: {
       backgroundColor: f.weg,
-      borderRadius: radius.s,
-      paddingHorizontal: abstand.l,
-      minHeight: 42,
+      borderRadius: radius.rund,
+      paddingHorizontal: abstand.xl,
+      minHeight: 46,
       justifyContent: 'center',
     },
     karteNein: {
-      borderWidth: 1,
-      borderColor: f.linie,
-      borderRadius: radius.s,
-      paddingHorizontal: abstand.m,
-      minHeight: 42,
+      backgroundColor: f.flaeche,
+      borderRadius: radius.rund,
+      paddingHorizontal: abstand.l,
+      minHeight: 46,
       justifyContent: 'center',
     },
     fehlerFeld: {
-      borderLeftWidth: 3,
-      borderLeftColor: f.warnung,
       backgroundColor: f.flaeche,
-      padding: abstand.m,
+      padding: abstand.l,
       gap: abstand.s,
       alignItems: 'flex-start',
-      borderRadius: radius.s,
+      borderRadius: radius.m,
     },
     fehlerKnopf: {
-      borderWidth: 1,
-      borderColor: f.warnung,
-      borderRadius: radius.s,
-      paddingHorizontal: abstand.m,
-      minHeight: 40,
+      backgroundColor: f.flaecheHoch,
+      borderRadius: radius.rund,
+      paddingHorizontal: abstand.l,
+      minHeight: 44,
       justifyContent: 'center',
     },
     chipZeile: { flexDirection: 'row', flexWrap: 'wrap', gap: abstand.s, paddingBottom: abstand.s },
     chip: {
-      borderWidth: 1,
-      borderColor: f.linie,
       backgroundColor: f.flaeche,
-      borderRadius: radius.s,
-      paddingHorizontal: abstand.m,
-      minHeight: 40,
+      borderRadius: radius.rund,
+      paddingHorizontal: abstand.l,
+      minHeight: 44,
       justifyContent: 'center',
     },
-    chipText: { fontFamily: 'BarlowSemiCondensed_500Medium', fontSize: 16, color: f.weg },
+    chipText: { fontFamily: 'Manrope_500Medium', fontSize: 16, color: f.signalText },
     eingabeZeile: { flexDirection: 'row', gap: abstand.s, alignItems: 'flex-end', paddingBottom: abstand.s },
     feld: {
       flex: 1,
-      borderWidth: 1,
-      borderColor: f.linie,
       backgroundColor: f.flaeche,
-      borderRadius: radius.s,
+      borderRadius: radius.gross,
       paddingHorizontal: abstand.m,
       paddingVertical: abstand.m,
-      fontFamily: 'Barlow_400Regular',
+      fontFamily: 'Manrope_400Regular',
       fontSize: 17,
       color: f.tinte,
       maxHeight: 130,
@@ -321,10 +315,10 @@ const stile = (f: Farben) =>
     },
     knopf: {
       backgroundColor: f.weg,
-      borderRadius: radius.s,
+      borderRadius: radius.gross,
       paddingHorizontal: abstand.l,
-      minHeight: 50,
+      minHeight: 54,
       justifyContent: 'center',
     },
-    knopfText: { color: f.aufAkzent, fontFamily: 'BarlowSemiCondensed_600SemiBold', fontSize: 17, letterSpacing: 0.3 },
+    knopfText: { color: f.aufAkzent, fontFamily: 'Manrope_600SemiBold', fontSize: 17 },
   });

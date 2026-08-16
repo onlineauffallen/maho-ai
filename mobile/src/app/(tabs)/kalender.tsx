@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react';
 import {
-  Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -16,8 +15,8 @@ import { useCalendarStore, type CalendarView } from '@/lib/calendarStore';
 import { useTodoStore } from '@/lib/todoStore';
 import { terminAnlegen, terminLoeschen, kalenderZugriffSicherstellen } from '@/lib/kalender';
 import { alsDatum, datumLesbar, plusTage, today, wochenStart } from '@/lib/ids';
-import { abstand, radius, schrift, useFarben, type Farben, ZEITSPALTE } from '@/lib/theme';
-import { Zeile, JetztMarke } from '@/components/Zeitspalte';
+import { abstand, radius, schrift, useFarben, type Farben } from '@/lib/theme';
+import { useNachfrage } from '@/components/Nachfrage';
 
 const WOCHENTAGE = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 const WOCHENTAGE_LANG = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
@@ -45,11 +44,11 @@ function zeitraum(view: CalendarView, datum: string): { von: string; bis: string
   };
 }
 
-/** Was in der Zeitspalte links steht. Nie leer, sonst reißt die Schiene ab. */
-function spaltenText(e: Eintrag): { zeit: string; zusatz?: string } {
-  if (e.art === 'aufgabe') return { zeit: 'offen', zusatz: 'fällig' };
-  if (!e.zeit) return { zeit: 'ganz', zusatz: 'tags' };
-  return { zeit: e.zeit, zusatz: e.ende ? `bis ${e.ende}` : undefined };
+/** Die Zeile über dem Titel: wann das ist, in Messing. */
+function wannText(e: Eintrag, heute: string): string {
+  if (e.art === 'aufgabe') return e.datum < heute ? 'überfällig' : 'fällig';
+  if (!e.zeit) return 'ganztags';
+  return e.ende ? `${e.zeit} bis ${e.ende}` : e.zeit;
 }
 
 export default function KalenderScreen() {
@@ -58,6 +57,7 @@ export default function KalenderScreen() {
   const { events, view, selectedDate, setView, setSelectedDate } = useCalendarStore();
   const todos = useTodoStore((s) => s.todos);
   const toggleDone = useTodoStore((s) => s.toggleDone);
+  const { frage, dialog } = useNachfrage();
   const heute = today();
   const { von, bis } = zeitraum(view, selectedDate);
   const [neuOffen, setNeuOffen] = useState(false);
@@ -73,11 +73,13 @@ export default function KalenderScreen() {
     void kalenderZugriffSicherstellen();
   }
 
-  function loeschenMitRueckfrage(id: string, titel: string) {
-    Alert.alert('Termin löschen?', `„${titel}" wird entfernt.`, [
-      { text: 'Abbrechen', style: 'cancel' },
-      { text: 'Löschen', style: 'destructive', onPress: () => terminLoeschen(id) },
-    ]);
+  function loeschen(id: string, titel: string) {
+    frage({
+      titel: 'Termin löschen?',
+      text: `„${titel}" wird aus dem Kalender entfernt.`,
+      knopf: 'Löschen',
+      onBestaetigen: () => terminLoeschen(id),
+    });
   }
 
   const eintraege = useMemo<Eintrag[]>(() => {
@@ -100,8 +102,6 @@ export default function KalenderScreen() {
     return m;
   }, [eintraege]);
 
-  // In Woche und Monat nach Tagen gruppieren. Eine ungegliederte Liste über
-  // dreißig Tage kann niemand lesen.
   const nachTag = useMemo(() => {
     const m = new Map<string, Eintrag[]>();
     for (const e of sichtbar) m.set(e.datum, [...(m.get(e.datum) ?? []), e]);
@@ -113,12 +113,16 @@ export default function KalenderScreen() {
     view === 'day'
       ? selectedDate === heute
         ? 'Heute'
-        : `${WOCHENTAGE_LANG[(d.getDay() + 6) % 7]}, ${d.getDate()}.`
+        : WOCHENTAGE_LANG[(d.getDay() + 6) % 7]
+      : view === 'week'
+        ? 'Diese Woche'
+        : MONATE[d.getMonth()];
+  const kopfKlein =
+    view === 'day'
+      ? `${d.getDate()}. ${MONATE[d.getMonth()]} ${d.getFullYear()}`
       : view === 'week'
         ? `${new Date(`${von}T12:00:00`).getDate()}. bis ${new Date(`${bis}T12:00:00`).getDate()}. ${MONATE[new Date(`${bis}T12:00:00`).getMonth()]}`
-        : `${MONATE[d.getMonth()]}`;
-  const kopfKlein =
-    view === 'day' ? `${d.getDate()}. ${MONATE[d.getMonth()]} ${d.getFullYear()}` : `${d.getFullYear()}`;
+        : `${d.getFullYear()}`;
 
   function blaettern(richtung: 1 | -1) {
     if (view === 'month') {
@@ -128,72 +132,69 @@ export default function KalenderScreen() {
     }
   }
 
-  function eintragZeile(e: Eintrag, letzte: boolean) {
-    const { zeit, zusatz } = spaltenText(e);
+  function karte(e: Eintrag) {
+    const dringend =
+      e.art === 'aufgabe' ? e.datum <= heute : e.datum === heute && (!e.zeit || e.zeit >= jetztZeit);
     const ueberfaellig = e.art === 'aufgabe' && e.datum < heute;
+
     return (
-      <Zeile
-        key={`${e.art}-${e.id}`}
-        zeit={ueberfaellig ? 'offen' : zeit}
-        zusatz={ueberfaellig ? 'überfällig' : zusatz}
-        hervorgehoben={ueberfaellig}
-        letzte={letzte}
-      >
-        <View style={stil.eintrag}>
-          {/* Eine Aufgabe lässt sich hier direkt abhaken. Das Etikett "Termin"
-              oder "Aufgabe" ist dafür weggefallen: die Spalte links sagt schon,
-              was es ist, und ein Häkchen ist nützlicher als eine Beschriftung. */}
-          {e.art === 'aufgabe' && (
-            <Pressable
-              onPress={() => toggleDone(e.id)}
-              style={stil.hakenFeld}
-              accessibilityRole="checkbox"
-              accessibilityState={{ checked: false }}
-              accessibilityLabel={e.titel}
-            >
-              <View style={stil.kasten} />
-            </Pressable>
-          )}
+      <View key={`${e.art}-${e.id}`} style={stil.karte}>
+        {dringend && <View style={[stil.kante, ueberfaellig && { backgroundColor: f.warnung }]} />}
+
+        {e.art === 'aufgabe' && (
           <Pressable
-            onLongPress={e.art === 'termin' ? () => loeschenMitRueckfrage(e.id, e.titel) : undefined}
-            style={{ flex: 1 }}
+            onPress={() => toggleDone(e.id)}
+            style={stil.kreisFeld}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: false }}
+            accessibilityLabel={e.titel}
           >
-            <Text style={[schrift.betont, { color: f.tinte }]}>{e.titel}</Text>
+            <View style={stil.kreis} />
           </Pressable>
+        )}
+
+        <View style={stil.karteText}>
+          <Text style={[schrift.klein, { color: ueberfaellig ? f.warnung : f.signalText }]}>
+            {wannText(e, heute)}
+          </Text>
+          <Text style={[schrift.normal, { color: f.tinte }]}>{e.titel}</Text>
         </View>
-      </Zeile>
+
+        {e.art === 'termin' && (
+          <Pressable onPress={() => loeschen(e.id, e.titel)} style={stil.aktion} accessibilityLabel="Löschen">
+            <Kreuz farben={f} />
+          </Pressable>
+        )}
+      </View>
     );
   }
 
   return (
     <SafeAreaView style={stil.sicher} edges={['top']}>
       <View style={stil.kopfBlock}>
-        <View style={stil.titelZeile}>
+        <View style={stil.kopfZeile}>
           <View>
             <Text style={[schrift.gross, { color: f.tinte }]}>{kopf}</Text>
-            <Text style={[schrift.klein, { color: f.schwach }]}>{kopfKlein}</Text>
+            <Text style={[schrift.klein, { color: f.gedaempft }]}>{kopfKlein}</Text>
           </View>
-          <View style={stil.titelAktionen}>
+          <View style={stil.kopfAktionen}>
             {selectedDate !== heute && (
               <Pressable onPress={() => setSelectedDate(heute)} style={stil.heuteKnopf}>
-                <Text style={[schrift.klein, { color: f.weg, fontFamily: 'Barlow_500Medium' }]}>Heute</Text>
+                <Text style={[schrift.klein, { color: f.signalText }]}>Heute</Text>
               </Pressable>
             )}
             <Pressable
               onPress={() => { setNeuDatum(selectedDate); setNeuOffen(true); }}
-              style={stil.plusKnopf}
-              accessibilityRole="button"
+              style={stil.plus}
               accessibilityLabel="Neuen Termin anlegen"
             >
-              <Text style={stil.plusText}>+</Text>
+              <View style={[stil.plusStrich, { width: 20, height: 2.5 }]} />
+              <View style={[stil.plusStrich, { width: 2.5, height: 20, position: 'absolute' }]} />
             </Pressable>
           </View>
         </View>
 
         <View style={stil.leiste}>
-          <Pressable onPress={() => blaettern(-1)} style={stil.pfeilFeld} accessibilityLabel="zurück">
-            <Text style={stil.pfeil}>‹</Text>
-          </Pressable>
           <View style={stil.umschalter}>
             {(['day', 'week', 'month'] as CalendarView[]).map((v) => (
               <Pressable
@@ -207,31 +208,39 @@ export default function KalenderScreen() {
               </Pressable>
             ))}
           </View>
-          <Pressable onPress={() => blaettern(1)} style={stil.pfeilFeld} accessibilityLabel="weiter">
-            <Text style={stil.pfeil}>›</Text>
-          </Pressable>
+          <View style={stil.pfeile}>
+            <Pressable onPress={() => blaettern(-1)} style={stil.pfeilFeld} accessibilityLabel="zurück">
+              <Pfeil farben={f} richtung="links" />
+            </Pressable>
+            <Pressable onPress={() => blaettern(1)} style={stil.pfeilFeld} accessibilityLabel="weiter">
+              <Pfeil farben={f} richtung="rechts" />
+            </Pressable>
+          </View>
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={stil.inhalt}>
+      <ScrollView contentContainerStyle={stil.inhalt} showsVerticalScrollIndicator={false}>
         {view === 'week' && (
           <View style={stil.wochenRaster}>
             {Array.from({ length: 7 }, (_, i) => plusTage(von, i)).map((tag) => {
               const dd = new Date(`${tag}T12:00:00`);
-              const aktiv = tag === selectedDate;
               return (
                 <Pressable
                   key={tag}
                   onPress={() => { setSelectedDate(tag); setView('day'); }}
-                  style={[stil.wochenTag, tag === heute && stil.heuteFeld, aktiv && stil.gewaehltFeld]}
+                  style={[stil.wochenTag, tag === heute && stil.heuteFeld]}
                 >
-                  <Text style={[stil.wochenTagName, tag === heute && { color: f.signal }]}>
+                  <Text style={[stil.wochenTagName, tag === heute && { color: f.aufAkzent }]}>
                     {WOCHENTAGE[(dd.getDay() + 6) % 7]}
                   </Text>
-                  <Text style={[stil.wochenTagZahl, tag === heute && { color: f.signal }]}>{dd.getDate()}</Text>
-                  <View style={[stil.punktZeile, !proTag.get(tag) && { opacity: 0 }]}>
-                    <View style={[stil.punkt, { backgroundColor: tag === heute ? f.signal : f.weg }]} />
-                  </View>
+                  <Text style={[stil.wochenTagZahl, tag === heute && { color: f.aufAkzent }]}>{dd.getDate()}</Text>
+                  <View
+                    style={[
+                      stil.punkt,
+                      { backgroundColor: tag === heute ? f.aufAkzent : f.signal },
+                      !proTag.get(tag) && { opacity: 0 },
+                    ]}
+                  />
                 </Pressable>
               );
             })}
@@ -248,65 +257,49 @@ export default function KalenderScreen() {
           />
         )}
 
-        <View style={stil.liste}>
-          {sichtbar.length === 0 ? (
-            <View style={{ gap: abstand.m }}>
-              <Text style={[schrift.normal, { color: f.gedaempft }]}>
-                {view === 'day' ? 'An diesem Tag steht nichts an.' : 'In diesem Zeitraum steht nichts an.'}
-              </Text>
-              {naechste.length > 0 && (
-                <>
-                  <Text style={[schrift.abschnitt, stil.abschnitt]}>ALS NÄCHSTES</Text>
-                  {naechste.map((e, i) => {
-                    const { zeit, zusatz } = spaltenText(e);
-                    return (
-                      <Zeile key={`n-${e.id}`} zeit={zeit} zusatz={zusatz} letzte={i === naechste.length - 1}>
-                        <Pressable onPress={() => { setSelectedDate(e.datum); setView('day'); }}>
-                          <Text style={[schrift.betont, { color: f.tinte }]}>{e.titel}</Text>
-                          <Text style={[schrift.klein, { color: f.gedaempft }]}>{datumLesbar(e.datum)}</Text>
-                        </Pressable>
-                      </Zeile>
-                    );
-                  })}
-                </>
-              )}
-            </View>
-          ) : view === 'day' ? (
-            <>
-              {sichtbar.map((e, i) => {
-                const vorherNach =
-                  selectedDate === heute &&
-                  !!e.zeit &&
-                  e.zeit > jetztZeit &&
-                  (i === 0 || !sichtbar[i - 1].zeit || sichtbar[i - 1].zeit! <= jetztZeit);
-                return (
-                  <View key={`w-${e.art}-${e.id}`}>
-                    {vorherNach && <JetztMarke zeit={jetztZeit} />}
-                    {eintragZeile(e, i === sichtbar.length - 1)}
-                  </View>
-                );
-              })}
-              {/* Jetzt-Marke ans Ende, wenn alles Heutige schon vorbei ist. */}
-              {selectedDate === heute &&
-                sichtbar.every((e) => !e.zeit || e.zeit <= jetztZeit) && <JetztMarke zeit={jetztZeit} />}
-            </>
-          ) : (
-            nachTag.map(([tag, liste]) => {
-              const dd = new Date(`${tag}T12:00:00`);
-              return (
-                <View key={tag}>
-                  <Pressable onPress={() => { setSelectedDate(tag); setView('day'); }} style={stil.tagKopf}>
-                    <Text style={[schrift.abschnitt, stil.abschnitt, tag === heute && { color: f.signal }]}>
-                      {WOCHENTAGE_LANG[(dd.getDay() + 6) % 7].toUpperCase()}, {dd.getDate()}.{dd.getMonth() + 1}.
-                    </Text>
+        {sichtbar.length === 0 ? (
+          <View style={{ gap: abstand.m }}>
+            <Text style={[schrift.normal, { color: f.gedaempft }]}>
+              {view === 'day' ? 'An diesem Tag steht nichts an.' : 'In diesem Zeitraum steht nichts an.'}
+            </Text>
+            {naechste.length > 0 && (
+              <View style={{ gap: abstand.s }}>
+                <Text style={[schrift.titel, stil.tagKopf]}>Als Nächstes</Text>
+                {naechste.map((e) => (
+                  <Pressable
+                    key={`n-${e.id}`}
+                    onPress={() => { setSelectedDate(e.datum); setView('day'); }}
+                    style={stil.karte}
+                  >
+                    <View style={stil.karteText}>
+                      <Text style={[schrift.klein, { color: f.signalText }]}>{datumLesbar(e.datum)}</Text>
+                      <Text style={[schrift.normal, { color: f.tinte }]}>{e.titel}</Text>
+                    </View>
                   </Pressable>
-                  {liste.map((e, i) => eintragZeile(e, i === liste.length - 1))}
-                </View>
-              );
-            })
-          )}
-        </View>
+                ))}
+              </View>
+            )}
+          </View>
+        ) : view === 'day' ? (
+          <View style={{ gap: abstand.s }}>{sichtbar.map(karte)}</View>
+        ) : (
+          nachTag.map(([tag, liste]) => {
+            const dd = new Date(`${tag}T12:00:00`);
+            return (
+              <View key={tag} style={{ gap: abstand.s }}>
+                <Pressable onPress={() => { setSelectedDate(tag); setView('day'); }}>
+                  <Text style={[schrift.titel, stil.tagKopf, tag === heute && { color: f.signalText }]}>
+                    {WOCHENTAGE_LANG[(dd.getDay() + 6) % 7]}, {dd.getDate()}. {MONATE[dd.getMonth()].slice(0, 3)}
+                  </Text>
+                </Pressable>
+                {liste.map(karte)}
+              </View>
+            );
+          })
+        )}
       </ScrollView>
+
+      {dialog}
 
       <NeuerTermin
         sichtbar={neuOffen}
@@ -317,6 +310,41 @@ export default function KalenderScreen() {
         onSichern={terminSichern}
       />
     </SafeAreaView>
+  );
+}
+
+function Pfeil({ farben: f, richtung }: { farben: Farben; richtung: 'links' | 'rechts' }) {
+  const strich = {
+    position: 'absolute' as const,
+    width: 11,
+    height: 2.5,
+    borderRadius: 2,
+    backgroundColor: f.gedaempft,
+  };
+  // Bei 'links' müssen die Striche andersherum kippen, sonst zeigt der Pfeil
+  // nach rechts.
+  const dreh = richtung === 'links' ? -1 : 1;
+  return (
+    <View style={{ width: 20, height: 20, alignItems: 'center', justifyContent: 'center' }}>
+      <View style={[strich, { transform: [{ translateY: -3.5 }, { rotate: `${45 * dreh}deg` }] }]} />
+      <View style={[strich, { transform: [{ translateY: 3.5 }, { rotate: `${-45 * dreh}deg` }] }]} />
+    </View>
+  );
+}
+
+function Kreuz({ farben: f }: { farben: Farben }) {
+  const strich = {
+    position: 'absolute' as const,
+    width: 16,
+    height: 2,
+    borderRadius: 1,
+    backgroundColor: f.schwach,
+  };
+  return (
+    <View style={{ width: 18, height: 18, alignItems: 'center', justifyContent: 'center' }}>
+      <View style={[strich, { transform: [{ rotate: '45deg' }] }]} />
+      <View style={[strich, { transform: [{ rotate: '-45deg' }] }]} />
+    </View>
   );
 }
 
@@ -348,12 +376,16 @@ function MonatsRaster({
           <View key={tag ?? `leer-${i}`} style={stil.monatFeld}>
             {tag && (
               <Pressable onPress={() => onTag(tag)} style={[stil.monatTag, tag === heute && stil.heuteFeld]}>
-                <Text style={[stil.monatZahl, tag === heute && { color: f.signal }]}>
+                <Text style={[stil.monatZahl, tag === heute && { color: f.aufAkzent }]}>
                   {Number(tag.slice(-2))}
                 </Text>
-                <View style={[stil.punktZeile, !proTag.get(tag) && { opacity: 0 }]}>
-                  <View style={[stil.punkt, { backgroundColor: tag === heute ? f.signal : f.weg }]} />
-                </View>
+                <View
+                  style={[
+                    stil.punkt,
+                    { backgroundColor: tag === heute ? f.aufAkzent : f.signal },
+                    !proTag.get(tag) && { opacity: 0 },
+                  ]}
+                />
               </Pressable>
             )}
           </View>
@@ -382,20 +414,10 @@ function NeuerTermin({
 
   return (
     <Modal visible={sichtbar} animationType="slide" transparent onRequestClose={onAbbrechen}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={stil.dialogHintergrund}
-      >
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={stil.dialogHintergrund}>
         <View style={stil.dialog}>
-          <View style={stil.dialogKopf}>
-            <Pressable onPress={onAbbrechen} style={stil.dialogKnopfLinks}>
-              <Text style={[schrift.normal, { color: f.gedaempft }]}>Abbrechen</Text>
-            </Pressable>
-            <Text style={[schrift.titel, { color: f.tinte }]}>Neuer Termin</Text>
-            <Pressable onPress={sichern} style={stil.dialogKnopfRechts} disabled={!titel.trim()}>
-              <Text style={[schrift.betont, { color: f.weg }, !titel.trim() && { opacity: 0.3 }]}>Sichern</Text>
-            </Pressable>
-          </View>
+          <View style={stil.griff} />
+          <Text style={[schrift.titel, { color: f.tinte }]}>Neuer Termin</Text>
 
           <TextInput
             style={stil.feld}
@@ -408,18 +430,18 @@ function NeuerTermin({
             onSubmitEditing={sichern}
           />
 
-          <Text style={[schrift.abschnitt, stil.abschnitt]}>WANN</Text>
+          <Text style={[schrift.klein, { color: f.gedaempft }]}>Wann</Text>
           <View style={stil.datumZeile}>
             <Pressable onPress={() => setDatum(plusTage(datum, -1))} style={stil.pfeilFeld}>
-              <Text style={stil.pfeil}>‹</Text>
+              <Pfeil farben={f} richtung="links" />
             </Pressable>
             <Text style={[schrift.zeitGross, { color: f.tinte }]}>{datumLesbar(datum)}</Text>
             <Pressable onPress={() => setDatum(plusTage(datum, 1))} style={stil.pfeilFeld}>
-              <Text style={stil.pfeil}>›</Text>
+              <Pfeil farben={f} richtung="rechts" />
             </Pressable>
           </View>
 
-          <Text style={[schrift.abschnitt, stil.abschnitt]}>UM WIE VIEL UHR</Text>
+          <Text style={[schrift.klein, { color: f.gedaempft }]}>Um wie viel Uhr</Text>
           <View style={stil.chipZeile}>
             {['', '08:00', '09:00', '12:00', '14:00', '17:00', '19:00'].map((z) => (
               <Pressable
@@ -439,6 +461,19 @@ function NeuerTermin({
             placeholderTextColor={f.schwach}
             keyboardType="numbers-and-punctuation"
           />
+
+          <View style={stil.dialogKnoepfe}>
+            <Pressable onPress={onAbbrechen} style={stil.abbrechen}>
+              <Text style={[schrift.betont, { color: f.gedaempft }]}>Abbrechen</Text>
+            </Pressable>
+            <Pressable
+              onPress={sichern}
+              disabled={!titel.trim()}
+              style={[stil.sichern, !titel.trim() && { opacity: 0.35 }]}
+            >
+              <Text style={[schrift.betont, { color: f.aufAkzent }]}>Sichern</Text>
+            </Pressable>
+          </View>
         </View>
       </KeyboardAvoidingView>
     </Modal>
@@ -449,97 +484,92 @@ const stile = (f: Farben) =>
   StyleSheet.create({
     sicher: { flex: 1, backgroundColor: f.papier },
     kopfBlock: { paddingHorizontal: abstand.l, paddingTop: abstand.s, gap: abstand.m, paddingBottom: abstand.m },
-    titelZeile: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
-    titelAktionen: { flexDirection: 'row', alignItems: 'center', gap: abstand.s },
+    kopfZeile: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
+    kopfAktionen: { flexDirection: 'row', alignItems: 'center', gap: abstand.s },
     heuteKnopf: {
-      borderWidth: 1,
-      borderColor: f.weg,
-      borderRadius: radius.s,
-      paddingHorizontal: abstand.m,
-      minHeight: 38,
+      backgroundColor: f.flaeche,
+      borderRadius: radius.rund,
+      paddingHorizontal: abstand.l,
+      minHeight: 42,
       justifyContent: 'center',
     },
-    plusKnopf: {
-      width: 44,
-      height: 44,
-      borderRadius: radius.s,
-      backgroundColor: f.weg,
-      alignItems: 'center',
-      justifyContent: 'center',
+    plus: {
+      width: 52, height: 52, borderRadius: radius.rund, backgroundColor: f.weg,
+      alignItems: 'center', justifyContent: 'center',
     },
-    plusText: { color: f.aufAkzent, fontSize: 28, lineHeight: 32, fontFamily: 'BarlowSemiCondensed_500Medium' },
+    plusStrich: { backgroundColor: f.aufAkzent, borderRadius: 2 },
     leiste: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-    umschalter: { flexDirection: 'row', borderWidth: 1, borderColor: f.linie, borderRadius: radius.s },
-    umschaltKnopf: { paddingHorizontal: abstand.l, paddingVertical: abstand.s, minHeight: 38, justifyContent: 'center' },
-    umschaltAktiv: { backgroundColor: f.tinte },
-    umschaltText: { fontFamily: 'BarlowSemiCondensed_600SemiBold', fontSize: 15, color: f.gedaempft, letterSpacing: 0.3 },
-    umschaltTextAktiv: { color: f.aufDunkel },
+    umschalter: { flexDirection: 'row', backgroundColor: f.flaeche, borderRadius: radius.rund, padding: 4 },
+    umschaltKnopf: { paddingHorizontal: abstand.l, minHeight: 38, justifyContent: 'center', borderRadius: radius.rund },
+    umschaltAktiv: { backgroundColor: f.weg },
+    umschaltText: { fontFamily: 'Manrope_500Medium', fontSize: 15, color: f.gedaempft },
+    umschaltTextAktiv: { color: f.aufAkzent, fontFamily: 'Manrope_600SemiBold' },
+    pfeile: { flexDirection: 'row' },
     pfeilFeld: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-    pfeil: { fontSize: 30, color: f.weg, lineHeight: 34 },
     inhalt: { paddingHorizontal: abstand.l, paddingBottom: abstand.xxl * 2, gap: abstand.l },
-    liste: { paddingTop: abstand.s },
-    eintrag: { flexDirection: 'row', alignItems: 'flex-start', gap: abstand.s },
-    hakenFeld: { width: 28, height: 26, alignItems: 'flex-start', justifyContent: 'center' },
-    kasten: { width: 20, height: 20, borderWidth: 2, borderColor: f.schwach, borderRadius: radius.s },
-    abschnitt: { color: f.schwach },
-    tagKopf: { paddingBottom: abstand.s, paddingTop: abstand.s },
-    wochenRaster: { flexDirection: 'row', justifyContent: 'space-between', paddingTop: abstand.s },
-    wochenTag: { alignItems: 'center', paddingVertical: abstand.s, width: 44, borderRadius: radius.s },
-    wochenTagName: { fontFamily: 'BarlowSemiCondensed_500Medium', fontSize: 12, color: f.schwach, letterSpacing: 0.5 },
-    wochenTagZahl: { fontFamily: 'BarlowSemiCondensed_700Bold', fontSize: 19, color: f.tinte, marginTop: 1 },
-    gewaehltFeld: { borderWidth: 1, borderColor: f.weg },
-    heuteFeld: { backgroundColor: f.signalSchwach },
-    punktZeile: { height: 8, justifyContent: 'center' },
-    punkt: { width: 5, height: 5, borderRadius: radius.rund },
-    monat: { gap: abstand.xs, paddingTop: abstand.s },
-    monatKopf: { flexDirection: 'row' },
-    monatKopfText: {
-      flex: 1,
-      textAlign: 'center',
-      fontFamily: 'BarlowSemiCondensed_500Medium',
-      fontSize: 12,
-      color: f.schwach,
-      letterSpacing: 0.5,
+    karte: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: f.flaeche,
+      borderRadius: radius.m,
+      paddingVertical: abstand.m,
+      paddingRight: abstand.s,
+      paddingLeft: abstand.l,
+      gap: abstand.s,
+      overflow: 'hidden',
     },
+    kante: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, backgroundColor: f.signal },
+    karteText: { flex: 1, gap: 1 },
+    kreisFeld: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center', marginLeft: -abstand.s },
+    kreis: { width: 24, height: 24, borderRadius: radius.rund, borderWidth: 2, borderColor: f.schwach },
+    aktion: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+    tagKopf: { color: f.gedaempft, fontSize: 17 },
+    wochenRaster: { flexDirection: 'row', justifyContent: 'space-between' },
+    wochenTag: { alignItems: 'center', paddingVertical: abstand.s, width: 46, borderRadius: radius.m, gap: 2 },
+    wochenTagName: { fontFamily: 'Manrope_500Medium', fontSize: 13, color: f.schwach },
+    wochenTagZahl: { fontFamily: 'Manrope_700Bold', fontSize: 18, color: f.tinte },
+    heuteFeld: { backgroundColor: f.weg },
+    punkt: { width: 5, height: 5, borderRadius: radius.rund },
+    monat: { gap: abstand.s },
+    monatKopf: { flexDirection: 'row' },
+    monatKopfText: { flex: 1, textAlign: 'center', fontFamily: 'Manrope_500Medium', fontSize: 13, color: f.schwach },
     monatRaster: { flexDirection: 'row', flexWrap: 'wrap' },
     monatFeld: { width: `${100 / 7}%`, aspectRatio: 1, alignItems: 'center', justifyContent: 'center' },
-    monatTag: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center', borderRadius: radius.s },
-    monatZahl: { fontFamily: 'BarlowSemiCondensed_600SemiBold', fontSize: 16, color: f.tinte },
-    dialogHintergrund: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(16,49,78,0.4)' },
-    dialog: {
-      backgroundColor: f.papier,
-      borderTopLeftRadius: radius.gross,
-      borderTopRightRadius: radius.gross,
-      padding: abstand.l,
-      gap: abstand.s,
-      paddingBottom: abstand.xxl,
+    monatTag: {
+      width: 40, height: 40, borderRadius: radius.rund,
+      alignItems: 'center', justifyContent: 'center', gap: 2,
     },
-    dialogKopf: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: abstand.s },
-    dialogKnopfLinks: { minWidth: 92, minHeight: 44, justifyContent: 'center' },
-    dialogKnopfRechts: { minWidth: 92, minHeight: 44, justifyContent: 'center', alignItems: 'flex-end' },
+    monatZahl: { fontFamily: 'Manrope_500Medium', fontSize: 16, color: f.tinte },
+    dialogHintergrund: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.55)' },
+    dialog: {
+      backgroundColor: f.papier, borderTopLeftRadius: radius.gross, borderTopRightRadius: radius.gross,
+      padding: abstand.l, gap: abstand.m, paddingBottom: abstand.xxl,
+    },
+    griff: {
+      width: 40, height: 4, borderRadius: 2, backgroundColor: f.linie,
+      alignSelf: 'center', marginBottom: abstand.s,
+    },
     feld: {
-      borderWidth: 1,
-      borderColor: f.linie,
-      backgroundColor: f.flaeche,
-      borderRadius: radius.s,
-      paddingHorizontal: abstand.m,
-      paddingVertical: abstand.m,
-      fontFamily: 'Barlow_400Regular',
-      fontSize: 17,
-      color: f.tinte,
-      minHeight: 50,
+      backgroundColor: f.flaeche, borderRadius: radius.m,
+      paddingHorizontal: abstand.l, paddingVertical: abstand.m,
+      fontFamily: 'Manrope_400Regular', fontSize: 18, color: f.tinte, minHeight: 54,
     },
     datumZeile: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
     chipZeile: { flexDirection: 'row', flexWrap: 'wrap', gap: abstand.s },
     chip: {
-      borderWidth: 1,
-      borderColor: f.linie,
-      borderRadius: radius.s,
-      paddingHorizontal: abstand.m,
-      minHeight: 40,
-      justifyContent: 'center',
+      borderRadius: radius.rund, backgroundColor: f.flaeche,
+      paddingHorizontal: abstand.l, minHeight: 42, justifyContent: 'center',
     },
-    chipAktiv: { backgroundColor: f.tinte, borderColor: f.tinte },
-    chipText: { fontFamily: 'BarlowSemiCondensed_500Medium', fontSize: 16, color: f.gedaempft },
-    chipTextAktiv: { color: f.aufDunkel },
+    chipAktiv: { backgroundColor: f.weg },
+    chipText: { fontFamily: 'Manrope_500Medium', fontSize: 16, color: f.gedaempft },
+    chipTextAktiv: { color: f.aufAkzent, fontFamily: 'Manrope_600SemiBold' },
+    dialogKnoepfe: { flexDirection: 'row', gap: abstand.s, marginTop: abstand.s },
+    abbrechen: {
+      flex: 1, backgroundColor: f.flaeche, borderRadius: radius.m,
+      minHeight: 54, alignItems: 'center', justifyContent: 'center',
+    },
+    sichern: {
+      flex: 2, backgroundColor: f.weg, borderRadius: radius.m,
+      minHeight: 54, alignItems: 'center', justifyContent: 'center',
+    },
   });

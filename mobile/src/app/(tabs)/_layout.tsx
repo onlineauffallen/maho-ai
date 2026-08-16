@@ -48,12 +48,7 @@ export default function TabsLayout() {
         tabBarActiveTintColor: f.weg,
         tabBarInactiveTintColor: f.schwach,
         tabBarStyle: { backgroundColor: f.flaeche, borderTopColor: f.linie, height: 88, paddingTop: 8 },
-        tabBarLabelStyle: {
-          fontFamily: 'BarlowSemiCondensed_600SemiBold',
-          fontSize: 12,
-          letterSpacing: 0.4,
-          marginTop: 4,
-        },
+        tabBarLabelStyle: { fontFamily: 'Manrope_600SemiBold', fontSize: 12, marginTop: 4 },
       }}
     >
       <Tabs.Screen
@@ -75,8 +70,8 @@ export default function TabsLayout() {
 const stil = StyleSheet.create({
   feld: { width: 22, height: 20, alignItems: 'center', justifyContent: 'center', gap: 3 },
   strich: { height: 2, borderRadius: 1 },
-  kasten: { width: 18, height: 18, borderWidth: 2, borderRadius: 3, alignItems: 'center', justifyContent: 'center' },
-  kastenFuellung: { width: 8, height: 8, borderRadius: 1 },
-  raster: { width: 18, height: 18, borderWidth: 2, borderRadius: 3, justifyContent: 'flex-start' },
+  kasten: { width: 18, height: 18, borderWidth: 2, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  kastenFuellung: { width: 8, height: 8, borderRadius: 4 },
+  raster: { width: 18, height: 18, borderWidth: 2, borderRadius: 6, justifyContent: 'flex-start' },
   rasterLinie: { height: 2, width: '100%', marginTop: 2 },
 });
