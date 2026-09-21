@@ -16,6 +16,8 @@ import { vorschlagBeschriftung, type Vorschlag } from '@/lib/vorschlaege';
 import { markdownStuecke } from '@/lib/markdown';
 
 export type Nachricht = {
+  /** Fehlt im Kennenlernen, dort steht die Liste nur im Arbeitsspeicher. */
+  id?: string;
   sender: 'user' | 'maho';
   text: string;
   actions?: string[];
@@ -94,13 +96,13 @@ export function ChatFlaeche({
         >
           {messages.map((m, i) =>
             m.sender === 'user' ? (
-              <View key={i} style={stil.zeileRechts}>
+              <View key={m.id ?? i} style={stil.zeileRechts}>
                 <View style={stil.blaseIch}>
                   <Text style={[schrift.normal, { color: f.aufDunkel }]}>{m.text}</Text>
                 </View>
               </View>
             ) : (
-              <View key={i} style={stil.mahoBlock}>
+              <View key={m.id ?? i} style={stil.mahoBlock}>
                 <View style={stil.mahoInhalt}>
                   <Text style={[schrift.normal, { color: f.tinte }]}>
                     {markdownStuecke(m.text).map((s, j) =>
