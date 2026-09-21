@@ -88,3 +88,78 @@ export function limitPruefen(schluessel: string, jetzt = Date.now()): LimitErgeb
 export function limitZuruecksetzen() {
   zaehler.clear();
 }
+
+/**
+ * Verbrauchsbudget je Zugangscode und Tag.
+ *
+ * Die Anfragenzahl allein deckelt die Kosten nicht: eine einzelne Anfrage mit
+ * langem Verlauf und fünf Werkzeugrunden kostet ein Vielfaches einer kurzen.
+ * Gezählt wird deshalb, was der Anbieter meldet, als gewichtete Token:
+ * Eingabe zählt einfach, Ausgabe vierfach (Annahme: Ausgabe kostet bei den
+ * gängigen Modellen ein Mehrfaches der Eingabe, die genauen Preise stehen
+ * nicht im Code). Zwischengespeicherte Eingabe zählt zu einem Zehntel.
+ *
+ * Grenzen: gleicher Speicher wie die Ratenbegrenzung, also je Serverprozess
+ * und nach einem Neustart bei null. Für eine Beta mit wenigen Codes reicht
+ * das, für den Store gehört es in eine Datenbank.
+ *
+ * Der Wert ist absichtlich großzügig: ein aktiver Nutzer mit 20 Nachrichten
+ * am Tag liegt bei rund 100.000, die Grenze fängt Ausreißer und Schleifen ab,
+ * nicht normale Nutzung. Einstellbar über MAHO_TAGESBUDGET und
+ * MAHO_TAGESBUDGET_GESAMT.
+ */
+function zahlAusUmgebung(name: string, standard: number): number {
+  const wert = Number(process.env[name]);
+  return Number.isFinite(wert) && wert > 0 ? wert : standard;
+}
+
+const BUDGET_JE_CODE = zahlAusUmgebung('MAHO_TAGESBUDGET', 400_000);
+const BUDGET_GESAMT = zahlAusUmgebung('MAHO_TAGESBUDGET_GESAMT', 3_000_000);
+
+type Tagesverbrauch = { tag: string; einheiten: number };
+const verbrauch = new Map<string, Tagesverbrauch>();
+const GESAMT = '__gesamt__';
+
+const tagesschluessel = (jetzt: number) => new Date(jetzt).toISOString().slice(0, 10);
+
+function heute(schluessel: string, jetzt: number): Tagesverbrauch {
+  const tag = tagesschluessel(jetzt);
+  const alt = verbrauch.get(schluessel);
+  if (alt && alt.tag === tag) return alt;
+  const neu = { tag, einheiten: 0 };
+  verbrauch.set(schluessel, neu);
+  return neu;
+}
+
+export type Nutzung = { prompt_tokens?: number; completion_tokens?: number; prompt_tokens_details?: { cached_tokens?: number } };
+
+/** Gewichtete Einheiten einer Antwort, wie sie der Anbieter in `usage` meldet. */
+export function einheiten(nutzung: Nutzung | undefined): number {
+  if (!nutzung) return 0;
+  const rein = Math.max(0, nutzung.prompt_tokens ?? 0);
+  const zwischengespeichert = Math.min(rein, Math.max(0, nutzung.prompt_tokens_details?.cached_tokens ?? 0));
+  const aus = Math.max(0, nutzung.completion_tokens ?? 0);
+  return Math.round(rein - zwischengespeichert + zwischengespeichert * 0.1 + aus * 4);
+}
+
+export function budgetPruefen(code: string, jetzt = Date.now()): LimitErgebnis {
+  const bisDahin = Math.ceil((Date.parse(`${tagesschluessel(jetzt)}T00:00:00Z`) + 86_400_000 - jetzt) / 1000);
+  if (heute(GESAMT, jetzt).einheiten >= BUDGET_GESAMT) {
+    return { erlaubt: false, grund: 'Heute ist der Assistent ausgelastet, morgen wieder', sekunden: bisDahin };
+  }
+  if (heute(code, jetzt).einheiten >= BUDGET_JE_CODE) {
+    return { erlaubt: false, grund: 'Tagesbudget aufgebraucht', sekunden: bisDahin };
+  }
+  return { erlaubt: true };
+}
+
+/** Bucht nach der Antwort. Die Prüfung davor lässt die letzte Anfrage über die Grenze laufen, das ist gewollt. */
+export function verbrauchBuchen(code: string, nutzung: Nutzung | undefined, jetzt = Date.now()) {
+  const n = einheiten(nutzung);
+  heute(code, jetzt).einheiten += n;
+  heute(GESAMT, jetzt).einheiten += n;
+}
+
+export function budgetZuruecksetzen() {
+  verbrauch.clear();
+}

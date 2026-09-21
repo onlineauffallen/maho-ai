@@ -1,4 +1,4 @@
-import { limitPruefen, limitZuruecksetzen } from '../src/server/schutz.ts';
+import { budgetPruefen, budgetZuruecksetzen, einheiten, limitPruefen, limitZuruecksetzen, verbrauchBuchen } from '../src/server/schutz.ts';
 
 let fehler = 0;
 function pruef(name: string, ist: unknown, soll: unknown) {
@@ -36,5 +36,26 @@ for (let minute = 0; minute < 40; minute++) {
   for (let i = 0; i < 12; i++) limitPruefen('d', T0 + minute * 61_000);
 }
 pruef('am nächsten Tag wieder frei', limitPruefen('d', T0 + 90_000_000).erlaubt, true);
+
+// Verbrauchsbudget
+pruef('Ausgabe zählt vierfach', einheiten({ prompt_tokens: 1000, completion_tokens: 100 }), 1400);
+pruef('zwischengespeicherte Eingabe zählt zu einem Zehntel', einheiten({ prompt_tokens: 1000, completion_tokens: 0, prompt_tokens_details: { cached_tokens: 800 } }), 280);
+pruef('fehlende Angabe zählt null', einheiten(undefined), 0);
+pruef('mehr cached als Eingabe wird gekappt', einheiten({ prompt_tokens: 100, completion_tokens: 0, prompt_tokens_details: { cached_tokens: 900 } }), 10);
+
+budgetZuruecksetzen();
+pruef('frischer Code darf', budgetPruefen('e', T0).erlaubt, true);
+verbrauchBuchen('e', { prompt_tokens: 300_000, completion_tokens: 25_000 }, T0);
+pruef('bei 400.000 Einheiten ist Schluss', budgetPruefen('e', T0 + 1000).erlaubt, false);
+pruef('ein anderer Code ist unberührt', budgetPruefen('f', T0 + 1000).erlaubt, true);
+pruef('am nächsten Tag wieder frei', budgetPruefen('e', T0 + 90_000_000).erlaubt, true);
+verbrauchBuchen('e', { prompt_tokens: 500_000, completion_tokens: 0 }, T0 + 90_000_000);
+const gesperrt = budgetPruefen('e', T0 + 90_000_000 + 1000);
+pruef('Wartezeit bis Mitternacht UTC ist positiv und unter einem Tag', !gesperrt.erlaubt && gesperrt.sekunden > 0 && gesperrt.sekunden <= 86_400, true);
+
+budgetZuruecksetzen();
+for (let i = 0; i < 8; i++) verbrauchBuchen(`n${i}`, { prompt_tokens: 380_000, completion_tokens: 0 }, T0);
+pruef('Gesamtbudget sperrt auch einen Code, der selbst noch nichts verbraucht hat', budgetPruefen('neu', T0).erlaubt, false);
+budgetZuruecksetzen();
 
 console.log(fehler === 0 ? '\nAlle Prüfungen bestanden.' : `\n${fehler} Prüfung(en) fehlgeschlagen.`);

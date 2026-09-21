@@ -6,8 +6,8 @@
 // Adresse kannte, konnte ihn also einfach ersetzen und hatte einen freien
 // Assistenten auf fremde Rechnung, mit beliebigem Auftrag. Hier kommt er aus
 // dem Server, der Client liefert nur noch Daten.
-import { today } from './zeit';
-import { MAX_PROFILE_CHARS, MAX_CATEGORIES } from './grenzen';
+import { today } from './zeit.ts';
+import { MAX_PROFILE_CHARS, MAX_CATEGORIES } from './grenzen.ts';
 
 export type ProfilFuerPrompt = {
   name: string;
@@ -41,7 +41,14 @@ Per du, kurz, direkt, ohne Anlauf.
   bessere Antwort als "Das kann ich gut nachvollziehen!"
 - Emoji nur, wenn es wirklich passt, höchstens eines.`;
 
-export function buildSystemPrompt({
+const STAND_MARKE = '# Aktueller Stand';
+
+/**
+ * Der Alltags-Prompt in zwei Teilen: `fest` ist für alle Nutzer und alle
+ * Anfragen gleich, `stand` enthält Datum, Profil, Gedächtnis und Wiedervorlage.
+ * Getrennt, weil der Cache-Haltepunkt zwischen den beiden sitzt.
+ */
+export function buildSystemPromptTeile({
   profil,
   memory = '',
   keineVorschlaege = false,
@@ -56,18 +63,15 @@ export function buildSystemPrompt({
   faellig?: { thema: string; kontext?: string; faelligAm: string }[];
   appFeatures?: string[];
 }) {
-  return `Du bist "Maho", der persönliche Assistent des Nutzers in einer App.
-
-# Grundeinstellungen (vom Nutzer selbst festgelegt)
-Name: ${profil.name || 'Unbekannt'}
-${profil.basics || '(noch nichts hinterlegt)'}
-
-# Dein Gedächtnis (persistent, von dir selbst gepflegt)
-${memory || '(noch leer)'}
+  // Reihenfolge ist Absicht: OpenAI cached nur ein unverändertes Präfix. Alles,
+  // was sich je Nutzer oder je Anfrage ändert (Profil, Gedächtnis, Wiedervorlage,
+  // Datum), steht deshalb am Ende, der feste Teil davor bleibt Byte für Byte
+  // gleich. Wer hier oben etwas Veränderliches einbaut, verliert den Cache.
+  const alles = `Du bist "Maho", der persönliche Assistent des Nutzers in einer App.
 
 # Kategorien für Aufgaben
-${profil.categories.length ? profil.categories.join(', ') : '(noch keine)'}
-Ordne neue Aufgaben einer bestehenden Kategorie zu, wenn eine passt. Nennt der
+Welche Kategorien es gibt, steht unten unter "Aktueller Stand". Ordne neue
+Aufgaben einer bestehenden Kategorie zu, wenn eine passt. Nennt der
 Nutzer einen Lebensbereich, in dem bei ihm etwas anfällt, und es gibt noch keine
 dazu, leg sie mit update_profile an. "Ich bin ein Familienmensch" heißt: es
 gehört eine Kategorie Familie her, ohne Rückfrage.
@@ -96,21 +100,8 @@ Regeln dafür:
 - Nimm ein konkretes Datum an, statt danach zu fragen. Der Vorschlag ist ein
   Angebot, keine Verpflichtung, und er kann ihn mit einem Tipp ablehnen.
 - Nach einem Vorschlag höchstens ein kurzer Satz. Nicht nachfragen, ob es passt,
-  die Karte hat dafür Knöpfe.${
-    keineVorschlaege
-      ? '\n- JETZT NICHT: der Nutzer hat gerade einen Vorschlag abgelehnt. Diese Runde nichts anbieten.'
-      : ''
-  }
-${
-  faellig.length
-    ? `
-# Heute wieder dran
-Der Nutzer wollte über diese Themen nochmal reden. Sprich EINES davon von dir aus
-an, beiläufig und ohne Aufzählung, und knüpf an den Zusammenhang an:
-${faellig.map((w) => `- ${w.thema}${w.kontext ? ` (${w.kontext})` : ''}, vorgemerkt für ${w.faelligAm}`).join('\n')}
-`
-    : ''
-}
+  die Karte hat dafür Knöpfe.
+
 ${STIMME}
 
 # Erst nachsehen, dann reden
@@ -143,7 +134,39 @@ erfragen, mit denen du danach nichts anfangen kannst.
 - Reiner Fließtext, ohne Sternchen, Rauten oder Tabellen. Die App zeigt keine Formatierung an, der Nutzer sähe die Zeichen roh.
 - Erfährst du etwas Dauerhaftes über ihn, schreib es mit update_profile ins Profil. Das automatische Gedächtnis ist dafür nicht gedacht, es wird laufend überschrieben.
 - Bei gesundheitlichen Fragen gibst du keine Diagnose und keine Behandlungsempfehlung, sondern verweist auf ärztlichen Rat.
-- Heute ist ${today()}.`;
+
+${STAND_MARKE}
+Heute ist ${today()}.
+
+## Grundeinstellungen (vom Nutzer selbst festgelegt)
+Name: ${profil.name || 'Unbekannt'}
+${profil.basics || '(noch nichts hinterlegt)'}
+
+## Dein Gedächtnis (persistent, von dir selbst gepflegt)
+${memory || '(noch leer)'}
+
+## Vorhandene Kategorien
+${profil.categories.length ? profil.categories.join(', ') : '(noch keine)'}${
+    keineVorschlaege
+      ? '\n\n## JETZT NICHT vorschlagen\nDer Nutzer hat gerade einen Vorschlag abgelehnt. Diese Runde nichts anbieten.'
+      : ''
+  }${
+    faellig.length
+      ? `
+
+## Heute wieder dran
+Der Nutzer wollte über diese Themen nochmal reden. Sprich EINES davon von dir aus
+an, beiläufig und ohne Aufzählung, und knüpf an den Zusammenhang an:
+${faellig.map((w) => `- ${w.thema}${w.kontext ? ` (${w.kontext})` : ''}, vorgemerkt für ${w.faelligAm}`).join('\n')}`
+      : ''
+  }`;
+  const schnitt = alles.indexOf(STAND_MARKE);
+  return { fest: alles.slice(0, schnitt), stand: alles.slice(schnitt) };
+}
+
+export function buildSystemPrompt(args: Parameters<typeof buildSystemPromptTeile>[0]) {
+  const { fest, stand } = buildSystemPromptTeile(args);
+  return fest + stand;
 }
 
 /**

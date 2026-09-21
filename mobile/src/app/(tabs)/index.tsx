@@ -10,6 +10,7 @@ import { useFollowupStore, faelligeWiedervorlagen } from '@/lib/followupStore';
 import { vorschlagAusfuehren } from '@/lib/vorschlaege';
 import { erinnerungenAktualisieren } from '@/lib/benachrichtigungen';
 import { kalenderZugriffSicherstellen } from '@/lib/kalender';
+import { verlaufsfenster } from '@/lib/verlaufsfenster';
 import { ChatFlaeche } from '@/components/ChatFlaeche';
 
 function Regler({ oben }: { oben?: boolean }) {
@@ -94,10 +95,11 @@ export default function ChatScreen() {
 
       if (ruheZaehler.current > 0) ruheZaehler.current -= 1;
 
-      // Verlauf: letzte 10 Nachrichten als Kontextfenster. Beim Wiederholen die
-      // eigene Nachricht ausklammern, sie geht als Eingabe mit.
+      // Verlauf: zehn bis dreizehn Nachrichten als Kontextfenster, der Anfang
+      // rückt in Blöcken vor, damit der Cache des Anbieters greift. Beim
+      // Wiederholen die eigene Nachricht ausklammern, sie geht als Eingabe mit.
       const bisher = erneut ? messages.slice(0, -1) : messages;
-      const verlauf = bisher.slice(-10).map((m) => ({
+      const verlauf = verlaufsfenster(bisher).map((m) => ({
         rolle: m.sender === 'user' ? ('user' as const) : ('maho' as const),
         text: m.text,
       }));

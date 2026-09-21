@@ -10,7 +10,7 @@
 // Jetzt liefert der Client nur noch Daten. Der Prompt, die Werkzeuge, das
 // Modell und die Grenzen kommen von hier.
 import { NextRequest, NextResponse } from 'next/server';
-import { buildSystemPrompt, buildOnboardingPrompt, buildMemoryEvalPrompt } from '@/server/prompts';
+import { buildSystemPromptTeile, buildOnboardingPrompt, buildMemoryEvalPrompt } from '@/server/prompts';
 import { getToolDefinitions, getOnboardingToolDefinitions } from '@/server/werkzeuge';
 import {
   MAX_EINGABE_ZEICHEN,
@@ -18,7 +18,7 @@ import {
   MAX_PROFILE_CHARS,
   MAX_VERLAUF,
 } from '@/server/grenzen';
-import { absenderPruefen, limitPruefen, zugangOffen } from '@/server/schutz';
+import { absenderPruefen, budgetPruefen, limitPruefen, verbrauchBuchen, zugangOffen } from '@/server/schutz';
 
 const apiKey = process.env.OPENAI_API_KEY;
 
@@ -30,7 +30,7 @@ const CONFIG = {
 
 type Zweck = keyof typeof CONFIG;
 
-type Nachricht = { role: 'system' | 'user' | 'assistant' | 'tool'; content: string | null; [k: string]: unknown };
+type Nachricht = { role: 'system' | 'developer' | 'user' | 'assistant' | 'tool'; content: string | null; [k: string]: unknown };
 
 /**
  * Erlaubte Herkünfte. Keine Wildcard, auch nicht in der Entwicklung: ein
@@ -58,17 +58,39 @@ function corsKopf(req: NextRequest): Record<string, string> {
  * echte API geprüft: gpt-5 und neuer verlangen max_completion_tokens, und mit
  * Function Tools zwingend reasoning_effort "none".
  */
-function buildBody(model: string, messages: unknown, tools: unknown[] | undefined, maxTokens: number) {
+function buildBody(model: string, messages: unknown, tools: unknown[] | undefined, maxTokens: number, haltepunkt: boolean) {
   const neueGeneration = /^(gpt-5|o[1-9])/.test(model);
   return {
     model,
     messages,
     ...(tools?.length ? { tools } : {}),
+    ...(haltepunkt ? { prompt_cache_options: { mode: 'explicit' } } : {}),
     temperature: 0.7,
     ...(neueGeneration
       ? { max_completion_tokens: maxTokens, reasoning_effort: 'none' }
       : { max_tokens: maxTokens }),
   };
+}
+
+/**
+ * Die Kopfnachrichten der Anfrage.
+ *
+ * Bei GPT-5.6 cached OpenAI ein gemeinsames Präfix nur, wenn dahinter ein
+ * Haltepunkt sitzt, sonst trifft ein anderer Nutzer mit anderem Ende nie
+ * (am 21.09.2026 gegen die echte API gemessen: implizit cached=0 bei jedem
+ * anderen Nutzer, mit Haltepunkt 2454 von 2530 Token). Werkzeugkatalog und
+ * fester Prompt stehen vor dem Haltepunkt, alles Veränderliche dahinter und
+ * damit ohne Schreibaufschlag. Andere Modelle bekommen die einfache Form.
+ */
+function kopfNachrichten(model: string, gesamt: string, festerTeil?: string): Nachricht[] {
+  if (!festerTeil || !/^gpt-5\.6/.test(model)) return [{ role: 'system', content: gesamt }];
+  return [
+    {
+      role: 'developer',
+      content: [{ type: 'text', text: festerTeil, prompt_cache_breakpoint: { mode: 'explicit' } }] as unknown as string,
+    },
+    { role: 'developer', content: gesamt.slice(festerTeil.length) },
+  ];
 }
 
 function fehler(text: string, status: number, req: NextRequest) {
@@ -94,6 +116,14 @@ export async function POST(req: NextRequest) {
   if (!limit.erlaubt) {
     return NextResponse.json(
       { error: limit.grund, wiederIn: limit.sekunden },
+      { status: 429, headers: corsKopf(req) }
+    );
+  }
+
+  const budget = budgetPruefen(absender.code);
+  if (!budget.erlaubt) {
+    return NextResponse.json(
+      { error: budget.grund, wiederIn: budget.sekunden },
       { status: 429, headers: corsKopf(req) }
     );
   }
@@ -143,6 +173,9 @@ export async function POST(req: NextRequest) {
 
   // Prompt und Werkzeuge entstehen hier, nicht im Client.
   let systemPrompt: string;
+  // Nur im Alltag gesetzt: der Teil, der für alle Nutzer gleich ist. Er bekommt
+  // einen Cache-Haltepunkt, siehe kopfNachrichten.
+  let festerTeil: string | undefined;
   let werkzeuge: unknown[] | undefined;
 
   if (zweck === 'memory') {
@@ -151,7 +184,7 @@ export async function POST(req: NextRequest) {
     systemPrompt = buildOnboardingPrompt({ profil, letzteRunde: koerper.letzteRunde === true });
     werkzeuge = getOnboardingToolDefinitions();
   } else {
-    systemPrompt = buildSystemPrompt({
+    const teile = buildSystemPromptTeile({
       profil,
       memory: gedaechtnis,
       keineVorschlaege: koerper.keineVorschlaege === true,
@@ -162,11 +195,13 @@ export async function POST(req: NextRequest) {
           })
         : [],
     });
-    werkzeuge = getToolDefinitions(profil.categories);
+    festerTeil = teile.fest;
+    systemPrompt = teile.fest + teile.stand;
+    werkzeuge = getToolDefinitions();
   }
 
   const messages: Nachricht[] = [
-    { role: 'system', content: systemPrompt },
+    ...kopfNachrichten(cfg.model, systemPrompt, festerTeil),
     ...verlauf,
     { role: 'user', content: eingabe },
   ];
@@ -214,7 +249,13 @@ export async function POST(req: NextRequest) {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(
-        buildBody(cfg.model, messages, letzteOhneWerkzeuge ? undefined : werkzeuge, cfg.maxTokens)
+        buildBody(
+          cfg.model,
+          messages,
+          letzteOhneWerkzeuge ? undefined : werkzeuge,
+          cfg.maxTokens,
+          messages[0].role === 'developer'
+        )
       ),
     });
   } catch (e) {
@@ -240,12 +281,15 @@ export async function POST(req: NextRequest) {
     return fehler('Der Anbieter hat unerwartet geantwortet.', 502, req);
   }
 
-  // Verbrauch mitschreiben. Ohne diese Zahl gibt es später nichts zu deckeln.
+  // Verbrauch mitschreiben und aufs Tagesbudget buchen. `cached` zeigt, ob das
+  // Prompt Caching greift: ab dem zweiten Aufruf sollte der feste Teil dort stehen.
   const verbrauch = daten.usage;
   if (verbrauch) {
+    verbrauchBuchen(absender.code, verbrauch);
     console.log(
       `[maho] ${zweck} ${cfg.model} ${absender.code}/${absender.geraet} ` +
-        `in=${verbrauch.prompt_tokens} out=${verbrauch.completion_tokens}`
+        `in=${verbrauch.prompt_tokens} cached=${verbrauch.prompt_tokens_details?.cached_tokens ?? 0} ` +
+        `out=${verbrauch.completion_tokens}`
     );
   }
 

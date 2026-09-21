@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "node tests/schutz.ts"
+    "test": "node tests/schutz.ts && node tests/cache.ts"
   },
   "dependencies": {
     "next": "15.3.3",

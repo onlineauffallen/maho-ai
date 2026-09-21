@@ -4,7 +4,7 @@
 // niemand von außen eigene Werkzeuge unterschieben oder den Katalog aufblähen
 // kann. Ausgeführt werden sie weiterhin in der App: dort liegen die Aufgaben,
 // Termine und das Profil, der Server sieht sie nie.
-import { MAX_PROFILE_CHARS, MAX_CATEGORIES } from './grenzen';
+import { MAX_PROFILE_CHARS, MAX_CATEGORIES } from './grenzen.ts';
 
 export const profilWerkzeug = {
   type: 'function',
@@ -30,11 +30,15 @@ export const profilWerkzeug = {
   },
 } as const;
 
-export function getToolDefinitions(categories: string[]) {
-  const known = categories.length
-    ? `Bekannte Kategorien: ${categories.join(', ')}. Nimm eine davon, wenn sie passt. Nur wenn wirklich keine passt, eine neue vergeben (maximal ${MAX_CATEGORIES} insgesamt).`
-    : 'Es gibt noch keine Kategorien. Vergib eine, wenn der Nutzer erkennbar zwischen Bereichen trennt (z. B. Firmenname oder "Privat").';
+/**
+ * Der Katalog ist für alle Nutzer und alle Anfragen derselbe, Byte für Byte:
+ * OpenAI cached nur ein unverändertes Präfix, und die Werkzeuge stehen davor.
+ * Die vorhandenen Kategorien stehen deshalb im Prompt unter "Aktueller Stand",
+ * nicht hier in den Beschreibungen.
+ */
+const known = `Nimm eine der vorhandenen Kategorien aus dem Prompt, wenn sie passt. Nur wenn wirklich keine passt, eine neue vergeben (maximal ${MAX_CATEGORIES} insgesamt). Gibt es noch keine und der Nutzer trennt erkennbar zwischen Bereichen (z. B. Firmenname oder "Privat"), vergib eine.`;
 
+export function getToolDefinitions() {
   return [
     // Auch im Alltag: erfährt Maho etwas Dauerhaftes über den Nutzer, gehört das
     // ins Profil und nicht ins automatische Gedächtnis, das nach jedem
