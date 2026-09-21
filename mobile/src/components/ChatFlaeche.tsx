@@ -27,6 +27,8 @@ export type Nachricht = {
 type Props = {
   titel?: string;
   messages: Nachricht[];
+  /** Antwort, die gerade noch eintrifft. Ersetzt den Ladekreis, sobald das erste Stück da ist. */
+  streamText?: string;
   busy: boolean;
   eingabe: string;
   setEingabe: (t: string) => void;
@@ -42,6 +44,23 @@ type Props = {
   onVorschlagAblehnen?: (v: Vorschlag) => void;
 };
 
+/** Ein Antworttext mit Fettdruck, wo das Modell ihn gesetzt hat. */
+function MahoText({ text, farbe }: { text: string; farbe: string }) {
+  return (
+    <Text style={[schrift.normal, { color: farbe }]}>
+      {markdownStuecke(text).map((s, j) =>
+        s.fett ? (
+          <Text key={j} style={{ fontFamily: 'Manrope_700Bold' }}>
+            {s.text}
+          </Text>
+        ) : (
+          s.text
+        )
+      )}
+    </Text>
+  );
+}
+
 /**
  * Das Gespräch.
  *
@@ -52,6 +71,7 @@ type Props = {
 export function ChatFlaeche({
   titel,
   messages,
+  streamText,
   busy,
   eingabe,
   setEingabe,
@@ -104,17 +124,7 @@ export function ChatFlaeche({
             ) : (
               <View key={m.id ?? i} style={stil.mahoBlock}>
                 <View style={stil.mahoInhalt}>
-                  <Text style={[schrift.normal, { color: f.tinte }]}>
-                    {markdownStuecke(m.text).map((s, j) =>
-                      s.fett ? (
-                        <Text key={j} style={{ fontFamily: 'Manrope_700Bold' }}>
-                          {s.text}
-                        </Text>
-                      ) : (
-                        s.text
-                      )
-                    )}
-                  </Text>
+                  <MahoText text={m.text} farbe={f.tinte} />
                   {m.actions?.map((a, j) => (
                     <View key={j} style={stil.aktion}>
                       <Text style={[schrift.klein, { color: f.gut }]}>{a}</Text>
@@ -137,7 +147,11 @@ export function ChatFlaeche({
           {busy && (
             <View style={stil.mahoBlock}>
               <View style={stil.mahoInhalt}>
-                <ActivityIndicator size="small" color={f.signal} />
+                {streamText ? (
+                  <MahoText text={streamText} farbe={f.tinte} />
+                ) : (
+                  <ActivityIndicator size="small" color={f.signal} />
+                )}
               </View>
             </View>
           )}

@@ -62,6 +62,8 @@ export default function ChatScreen() {
   const vorschlagAbschliessen = useChatStore((s) => s.vorschlagAbschliessen);
   const [eingabe, setEingabe] = useState('');
   const [busy, setBusy] = useState(false);
+  // Was von Mahos Antwort schon da ist, solange sie noch eintrifft.
+  const [streamText, setStreamText] = useState('');
   const [fehler, setFehler] = useState<string>();
   // Für "Nochmal versuchen": der Text, der beim letzten Versuch nicht durchkam.
   const letzterVersuch = useRef<string>('');
@@ -115,8 +117,10 @@ export default function ChatScreen() {
         verlauf,
         eingabe: userText,
         keineVorschlaege: ruheZaehler.current > 0,
+        beiText: setStreamText,
         signal: controller.signal,
       });
+      setStreamText('');
       addMessage({
         sender: 'maho',
         text: antwort,
@@ -133,6 +137,7 @@ export default function ChatScreen() {
       setFehler(fehlerText(e));
       if (!(e instanceof ChatFehler)) console.error('Chat:', e);
     } finally {
+      setStreamText('');
       setBusy(false);
       abbruch.current = null;
     }
@@ -142,6 +147,7 @@ export default function ChatScreen() {
     <ChatFlaeche
       titel="Maho"
       messages={messages}
+      streamText={streamText}
       busy={busy}
       eingabe={eingabe}
       setEingabe={setEingabe}

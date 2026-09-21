@@ -18,6 +18,7 @@ import {
   MAX_PROFILE_CHARS,
   MAX_VERLAUF,
 } from '@/server/grenzen';
+import { stromLesen } from '@/server/strom';
 import { absenderPruefen, budgetPruefen, limitPruefen, verbrauchBuchen, zugangOffen } from '@/server/schutz';
 
 const apiKey = process.env.OPENAI_API_KEY;
@@ -58,13 +59,21 @@ function corsKopf(req: NextRequest): Record<string, string> {
  * echte API geprüft: gpt-5 und neuer verlangen max_completion_tokens, und mit
  * Function Tools zwingend reasoning_effort "none".
  */
-function buildBody(model: string, messages: unknown, tools: unknown[] | undefined, maxTokens: number, haltepunkt: boolean) {
+function buildBody(
+  model: string,
+  messages: unknown,
+  tools: unknown[] | undefined,
+  maxTokens: number,
+  haltepunkt: boolean,
+  strom: boolean
+) {
   const neueGeneration = /^(gpt-5|o[1-9])/.test(model);
   return {
     model,
     messages,
     ...(tools?.length ? { tools } : {}),
     ...(haltepunkt ? { prompt_cache_options: { mode: 'explicit' } } : {}),
+    ...(strom ? { stream: true, stream_options: { include_usage: true } } : {}),
     temperature: 0.7,
     ...(neueGeneration
       ? { max_completion_tokens: maxTokens, reasoning_effort: 'none' }
@@ -91,6 +100,72 @@ function kopfNachrichten(model: string, gesamt: string, festerTeil?: string): Na
     },
     { role: 'developer', content: gesamt.slice(festerTeil.length) },
   ];
+}
+
+/** Ein Verbrauchsprotokoll und die Buchung aufs Tagesbudget, für beide Wege gleich. */
+function verbrauchErfassen(
+  zweck: string,
+  model: string,
+  absender: { code: string; geraet: string },
+  verbrauch: { prompt_tokens?: number; completion_tokens?: number; prompt_tokens_details?: { cached_tokens?: number } } | undefined
+) {
+  if (!verbrauch) return;
+  verbrauchBuchen(absender.code, verbrauch);
+  console.log(
+    `[maho] ${zweck} ${model} ${absender.code}/${absender.geraet} ` +
+      `in=${verbrauch.prompt_tokens} cached=${verbrauch.prompt_tokens_details?.cached_tokens ?? 0} ` +
+      `out=${verbrauch.completion_tokens}`
+  );
+}
+
+/**
+ * Antwort als Zeilenstrom (NDJSON): {"text":"…"} für jedes Textstück, am Ende
+ * genau eine Zeile {"fertig":{message,usage}} oder {"fehler":"…"}. Die App
+ * zeigt die Stücke sofort und arbeitet mit der fertigen Nachricht weiter,
+ * Werkzeugaufrufe kommen erst dort vollständig an.
+ */
+function streamAntwort(
+  body: ReadableStream<Uint8Array>,
+  info: { zweck: string; model: string; absender: { code: string; geraet: string } },
+  kopf: Record<string, string>
+) {
+  const enc = new TextEncoder();
+  const aus = new ReadableStream<Uint8Array>({
+    async start(c) {
+      const zeile = (o: unknown) => c.enqueue(enc.encode(JSON.stringify(o) + '\n'));
+      try {
+        for await (const e of stromLesen(body)) {
+          if (e.art === 'text') {
+            zeile({ text: e.text });
+            continue;
+          }
+          if (!e.message.content && !e.message.tool_calls) {
+            console.error('[maho] Leerer Antwortstrom');
+            zeile({ fehler: 'Der Anbieter hat unerwartet geantwortet.' });
+            continue;
+          }
+          verbrauchErfassen(info.zweck, info.model, info.absender, e.usage as never);
+          zeile({ fertig: { message: e.message, usage: e.usage } });
+        }
+      } catch (err) {
+        console.error('[maho] Strom abgebrochen:', err);
+        zeile({ fehler: 'Die Verbindung zum Anbieter ist abgebrochen.' });
+      }
+      c.close();
+    },
+    cancel() {
+      void body.cancel().catch(() => undefined);
+    },
+  });
+  return new Response(aus, {
+    headers: {
+      ...kopf,
+      'Content-Type': 'application/x-ndjson; charset=utf-8',
+      'Cache-Control': 'no-cache, no-transform',
+      // nginx puffert sonst die ganze Antwort und das Streaming ist umsonst
+      'X-Accel-Buffering': 'no',
+    },
+  });
 }
 
 function fehler(text: string, status: number, req: NextRequest) {
@@ -243,6 +318,9 @@ export async function POST(req: NextRequest) {
   // Textantwort statt einer weiteren Werkzeugrunde.
   if (runden.length >= 4) letzteOhneWerkzeuge = true;
 
+  // Streaming nur auf Wunsch der App. Ohne das Feld bleibt alles wie bisher.
+  const streamen = koerper.stream === true;
+
   let antwort: Response;
   try {
     antwort = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -254,7 +332,8 @@ export async function POST(req: NextRequest) {
           messages,
           letzteOhneWerkzeuge ? undefined : werkzeuge,
           cfg.maxTokens,
-          messages[0].role === 'developer'
+          messages[0].role === 'developer',
+          streamen
         )
       ),
     });
@@ -274,6 +353,10 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  if (streamen && antwort.body) {
+    return streamAntwort(antwort.body, { zweck, model: cfg.model, absender }, corsKopf(req));
+  }
+
   const daten = await antwort.json().catch(() => null);
   const nachricht = daten?.choices?.[0]?.message;
   if (!nachricht) {
@@ -284,14 +367,7 @@ export async function POST(req: NextRequest) {
   // Verbrauch mitschreiben und aufs Tagesbudget buchen. `cached` zeigt, ob das
   // Prompt Caching greift: ab dem zweiten Aufruf sollte der feste Teil dort stehen.
   const verbrauch = daten.usage;
-  if (verbrauch) {
-    verbrauchBuchen(absender.code, verbrauch);
-    console.log(
-      `[maho] ${zweck} ${cfg.model} ${absender.code}/${absender.geraet} ` +
-        `in=${verbrauch.prompt_tokens} cached=${verbrauch.prompt_tokens_details?.cached_tokens ?? 0} ` +
-        `out=${verbrauch.completion_tokens}`
-    );
-  }
+  verbrauchErfassen(zweck, cfg.model, absender, verbrauch);
 
   return NextResponse.json({ message: nachricht, usage: verbrauch }, { headers: corsKopf(req) });
 }

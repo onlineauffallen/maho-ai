@@ -45,9 +45,57 @@ export type Kontext = {
 
 type Runde = { assistent: Antwort; ergebnisse: { tool_call_id: string; name: string; result: string }[] };
 
+/**
+ * Liest den Zeilenstrom des Servers: {"text"} pro Stück, am Ende {"fertig"}
+ * oder {"fehler"}. Gibt die fertige Nachricht zurück, die Stücke gehen vorher
+ * einzeln an `beiText`. Wo die Plattform keinen Strom liefert (`body` fehlt),
+ * kommt die ganze Antwort auf einmal und wird genauso ausgewertet.
+ */
+async function stromLesen(res: Response, beiText: (bisher: string) => void): Promise<Antwort> {
+  let bisher = '';
+  let fertig: Antwort | undefined;
+
+  const zeile = (z: string) => {
+    if (!z.trim()) return;
+    let e: { text?: string; fertig?: { message: Antwort }; fehler?: string };
+    try {
+      e = JSON.parse(z);
+    } catch {
+      return;
+    }
+    if (e.fehler) throw new ChatFehler('server', e.fehler);
+    if (e.text) {
+      bisher += e.text;
+      beiText(bisher);
+    }
+    if (e.fertig) fertig = e.fertig.message;
+  };
+
+  if (res.body) {
+    const leser = res.body.getReader();
+    const dekoder = new TextDecoder();
+    let rest = '';
+    for (;;) {
+      const { done, value } = await leser.read();
+      if (done) break;
+      rest += dekoder.decode(value, { stream: true });
+      const zeilen = rest.split('\n');
+      rest = zeilen.pop() ?? '';
+      zeilen.forEach(zeile);
+    }
+    zeile(rest + dekoder.decode());
+  } else {
+    (await res.text()).split('\n').forEach(zeile);
+  }
+
+  if (!fertig) throw new ChatFehler('server', 'Die Antwort ist unvollständig angekommen.');
+  return fertig;
+}
+
 async function anfragen(
   koerper: Record<string, unknown>,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  beiText?: (bisher: string) => void
 ): Promise<Antwort> {
   const uhr = new AbortController();
   const timer = setTimeout(() => uhr.abort(), ZEITLIMIT_MS);
@@ -58,7 +106,7 @@ async function anfragen(
     const res = await fetch(apiUrl('/api/openai-chat'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...zugangsKopf() },
-      body: JSON.stringify(koerper),
+      body: JSON.stringify(beiText ? { ...koerper, stream: true } : koerper),
       signal: uhr.signal,
     });
 
@@ -68,6 +116,8 @@ async function anfragen(
       if (res.status === 429) throw new ChatFehler('ausgelastet', error || 'Zu viele Anfragen');
       throw new ChatFehler('server', error || 'Fehler beim Aufruf');
     }
+
+    if (beiText) return await stromLesen(res, beiText);
 
     const { message } = await res.json();
     return message as Antwort;
@@ -92,6 +142,7 @@ export async function runMahoAgent({
   toolset = alltagsWerkzeuge,
   keineVorschlaege = false,
   letzteRunde = false,
+  beiText,
   signal,
 }: {
   kontext: Kontext;
@@ -101,6 +152,8 @@ export async function runMahoAgent({
   keineVorschlaege?: boolean;
   /** Nur im Kennenlernen: die App beendet nach dieser Antwort. */
   letzteRunde?: boolean;
+  /** Bekommt den bisher eingetroffenen Antworttext, sobald er wächst. Leer, wenn eine neue Runde beginnt. */
+  beiText?: (bisher: string) => void;
   signal?: AbortSignal;
 }): Promise<{ text: string; actions: ToolAction[]; vorschlaege: Vorschlag[] }> {
   const actions: ToolAction[] = [];
@@ -108,9 +161,11 @@ export async function runMahoAgent({
   const runden: Runde[] = [];
 
   for (let runde = 0; runde < MAX_TOOL_ROUNDS; runde++) {
+    beiText?.('');
     const message = await anfragen(
       { zweck: toolset.zweck, kontext, verlauf, eingabe, runden, keineVorschlaege, letzteRunde },
-      signal
+      signal,
+      beiText
     );
 
     if (message.tool_calls?.length) {
