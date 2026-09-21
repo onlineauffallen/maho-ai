@@ -81,6 +81,10 @@ export function ChatFlaeche({
           </View>
         )}
 
+        <Text style={[schrift.klein, { color: f.gedaempft, paddingBottom: abstand.xs }]}>
+          Maho ist eine KI. Antworten können Fehler enthalten.
+        </Text>
+
         <ScrollView
           ref={scrollRef}
           style={stil.verlauf}

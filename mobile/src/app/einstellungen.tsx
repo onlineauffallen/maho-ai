@@ -18,6 +18,7 @@ import { useTodoStore } from '@/lib/todoStore';
 import { useCalendarStore } from '@/lib/calendarStore';
 import { alleTermineLoeschen } from '@/lib/kalender';
 import { useFollowupStore } from '@/lib/followupStore';
+import { useZustimmungStore } from '@/lib/zustimmungStore';
 import { datumLesbar } from '@/lib/ids';
 import { kategorieLoeschen, kategorieUmbenennen, aufgabenIn } from '@/lib/kategorien';
 import { abstand, radius, schrift, useFarben, type Farben } from '@/lib/theme';
@@ -39,6 +40,7 @@ export default function EinstellungenScreen() {
   const chat = useChatStore();
   const todos = useTodoStore();
   const followups = useFollowupStore();
+  const widerrufen = useZustimmungStore((s) => s.widerrufen);
   const { frage, dialog } = useNachfrage();
 
   const [name, setName] = useState(profil.name);
@@ -74,6 +76,7 @@ export default function EinstellungenScreen() {
         for (const k of [...profil.categories]) profil.removeCategory(k);
         profil.setSummaryReady(false);
         profil.setOnboardingDone(false);
+        widerrufen();
         router.replace('/onboarding');
       },
     });
@@ -223,9 +226,27 @@ export default function EinstellungenScreen() {
         <View style={stil.block}>
           <Text style={stil.abschnitt}>Deine Daten</Text>
           <Text style={[schrift.klein, { color: f.gedaempft }]}>
-            Maho denkt mit einem Sprachmodell von OpenAI. Was du schreibst, und was hier oben steht,
-            wird dorthin übertragen, um die Antwort zu erzeugen.
+            Maho denkt mit einem Sprachmodell von OpenAI (USA). Was du schreibst, dein Profil und
+            dein Gedächtnis werden dorthin übertragen, um die Antwort zu erzeugen, Aufgaben und Termine
+            nur, wenn Maho sie nachschlägt. Dem hast du zugestimmt.
           </Text>
+
+          <Pressable
+            onPress={() =>
+              frage({
+                titel: 'Zustimmung widerrufen?',
+                text: 'Danach überträgt die App nichts mehr, und Maho kann nicht antworten. Beim nächsten Öffnen fragt die App wieder. Deine Daten auf dem Gerät bleiben.',
+                knopf: 'Widerrufen',
+                onBestaetigen: () => {
+                  widerrufen();
+                  router.replace('/zustimmung');
+                },
+              })
+            }
+            style={stil.aktionKnopf}
+          >
+            <Text style={[schrift.normal, { color: f.tinte }]}>Zustimmung widerrufen</Text>
+          </Pressable>
 
           <Pressable onPress={datenExportieren} style={stil.aktionKnopf}>
             <Text style={[schrift.normal, { color: f.tinte }]}>Meine Daten exportieren</Text>

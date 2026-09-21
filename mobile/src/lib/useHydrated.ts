@@ -6,6 +6,7 @@ import { useCalendarStore } from './calendarStore';
 import { useMemoryStore } from './memory';
 import { useChatStore } from './chatStore';
 import { useFollowupStore } from './followupStore';
+import { useZustimmungStore } from './zustimmungStore';
 
 // Gedächtnis und Chatverlauf gehören zwingend dazu: schreibt der Nutzer,
 // bevor das Gedächtnis gelesen ist, wertet Maho gegen einen leeren Stand aus
@@ -17,6 +18,7 @@ const stores = [
   useMemoryStore,
   useChatStore,
   useFollowupStore,
+  useZustimmungStore,
 ];
 
 const alleFertig = () => stores.every((s) => s.persist.hasHydrated());

@@ -13,6 +13,7 @@ import {
 import { useProfileStore } from '@/lib/profileStore';
 import { useCalendarStore } from '@/lib/calendarStore';
 import { useFollowupStore } from '@/lib/followupStore';
+import { istZugestimmt, useZustimmungStore } from '@/lib/zustimmungStore';
 import { erinnerungenAktualisieren } from '@/lib/benachrichtigungen';
 import { useHydrated } from '@/lib/useHydrated';
 import { useFarben } from '@/lib/theme';
@@ -22,6 +23,7 @@ export default function RootLayout() {
   const f = useFarben();
 
   const onboardingDone = useProfileStore((s) => s.onboardingDone);
+  const zugestimmt = useZustimmungStore(istZugestimmt);
   const segmente = useSegments();
   const router = useRouter();
   const events = useCalendarStore((s) => s.events);
@@ -54,10 +56,17 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (!hydrated) return;
+    // Die Zustimmung geht allem vor: vorher darf nichts an den KI-Anbieter gehen.
+    const imZustimmen = segmente[0] === 'zustimmung';
+    if (!zugestimmt) {
+      if (!imZustimmen) router.replace('/zustimmung');
+      return;
+    }
     const imOnboarding = segmente[0] === 'onboarding';
-    if (!onboardingDone && !imOnboarding) router.replace('/onboarding');
-    if (onboardingDone && imOnboarding) router.replace('/');
-  }, [hydrated, onboardingDone, segmente, router]);
+    if (imZustimmen) router.replace(onboardingDone ? '/' : '/onboarding');
+    else if (!onboardingDone && !imOnboarding) router.replace('/onboarding');
+    else if (onboardingDone && imOnboarding) router.replace('/');
+  }, [hydrated, zugestimmt, onboardingDone, segmente, router]);
 
   // Solange Stores und Schriften nicht da sind, wissen wir nicht, wohin, und
   // die Typografie würde einmal umspringen. Lieber kurz nichts zeigen.
@@ -75,6 +84,7 @@ export default function RootLayout() {
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: f.papier } }}>
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="onboarding" />
+        <Stack.Screen name="zustimmung" />
       </Stack>
     </>
   );
