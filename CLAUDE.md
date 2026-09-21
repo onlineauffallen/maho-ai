@@ -10,25 +10,37 @@ Leitprinzip für ALLE Entscheidungen: **idiotensicher**. Keine API-Keys in der U
 keine Modell-Dropdowns, keine Konfiguration. Wenn ein Feature eine Erklärung braucht,
 ist es falsch designt.
 
-## Architektur (Stand Juli 2026)
+## Architektur (Stand 21. September 2026)
 
-- Next.js 15 (App Router), React 19, TypeScript, Tailwind 4, Zustand mit persist
-- `src/lib/promptBuilder.ts` - baut System-Prompt aus Profil + Gedächtnis; enthält
-  auch den Gedächtnis-Evaluierungs-Prompt
-- `src/lib/chatService.ts` - Agenten-Schleife: Nachricht + Tools an API, Tool-Calls
-  clientseitig ausführen, Ergebnisse zurück, bis Textantwort kommt (max. 5 Runden)
-- `src/lib/tools.ts` - Tool-Definitionen (OpenAI Function Calling) + Ausführung
-  gegen die Stores. Neue Fähigkeiten kommen HIER dazu.
-- `src/lib/memory.ts` - persistentes Gedächtnis, hartes Limit MAX_MEMORY_CHARS
-  (1500). Nach jedem Wortwechsel Evaluierung im Hintergrund (fire-and-forget,
-  darf den Chat nie blockieren).
-- `src/app/api/openai-chat/route.ts` - dünner Provider-Adapter. Schnittstelle
-  bewusst anbieterneutral (messages + tools rein, vollständige Message raus),
-  damit weitere Provider / "Sign in with ChatGPT/Claude" später einsteckbar sind.
-- Stores: `lib/todoStore.ts`, `features/calendar/CalendarStore.ts`,
-  `lib/useOnboardingStore.ts`, `lib/chatStore.ts` - alle mit zustand/persist
-  (localStorage)
-- Screens: `app/chat`, `app/calendar`, `app/todos`, `app/onboarding`
+Zwei Teile in einem Repo. Die Next.js-Oberfläche gibt es nicht mehr (16.08. gelöscht),
+übrig ist der API-Endpunkt.
+
+**Server (`src/`, Next.js 15):**
+- `src/app/api/openai-chat/route.ts` - der einzige Weg zum Sprachmodell. Nimmt nur Daten
+  entgegen (Eingabe, Verlauf, Profil, Gedächtnis), baut Prompt und Werkzeugkatalog selbst.
+  Mit `stream: true` im Körper antwortet er als Zeilenstrom (NDJSON).
+- `src/server/prompts.ts` - Prompts. Der Alltags-Prompt ist zweigeteilt: `fest` (für alle
+  gleich) und `stand` (Datum, Profil, Gedächtnis). **Nichts Veränderliches in den festen
+  Teil**, sonst ist der Cache weg (`tests/cache.ts` prüft das).
+- `src/server/werkzeuge.ts` - Werkzeugkatalog, für alle Nutzer byte-gleich, aus demselben Grund.
+- `src/server/schutz.ts` - Zugangscodes, Ratenbegrenzung, Tagesbudget je Code. Alles im
+  Arbeitsspeicher, je Prozess.
+- `src/server/strom.ts` - liest den Anbieterstrom und setzt Werkzeugaufrufe zusammen.
+
+**App (`mobile/`, Expo SDK 57, expo-router, Zustand mit persist auf AsyncStorage):**
+- `mobile/src/lib/chatService.ts` - Agenten-Schleife: Anfrage, Werkzeugaufrufe lokal
+  ausführen, Ergebnisse zurück, bis Text kommt.
+- `mobile/src/lib/tools.ts` - Ausführung der Werkzeuge gegen die Stores. Neue Fähigkeiten
+  brauchen Beschreibung in `src/server/werkzeuge.ts` UND Ausführung hier.
+- Stores: profileStore, memory, todoStore, calendarStore, followupStore, chatStore,
+  zustimmungStore. Neue Stores gehören in `useHydrated.ts`.
+- Vor jeder Übertragung an den Anbieter muss `zustimmungStore` zugestimmt haben, die Weiche
+  liegt in `mobile/src/app/_layout.tsx`.
+
+**Prompt Caching (GPT-5.6):** ein gemeinsames Präfix wird nur mit ausdrücklichem
+Haltepunkt gecached (`prompt_cache_breakpoint` und `prompt_cache_options.mode: explicit`,
+siehe `kopfNachrichten` in der Route). Am 21.09.2026 gemessen: 2454 von 2530 Token gelesen,
+auch bei fremden Nutzern. Implizit war es 0.
 
 ## Harte Regeln (nie verletzen)
 
@@ -47,7 +59,9 @@ ist es falsch designt.
 ## Befehle
 
 - `npm run dev` - Dev-Server (braucht `.env.local` mit `OPENAI_API_KEY=...`)
-- `npx tsc --noEmit` - Typprüfung; muss vor jedem Commit sauber sein
+- `npx tsc --noEmit` - Typprüfung, in Wurzel und in `mobile/`; muss vor jedem Commit sauber sein
+- `npm test` - Server-Tests (Schutz, Cache-Stabilität, Strom); in `mobile/` die App-Tests
+  (Zeitrechnung, Werkzeuge gegen die echten Stores, Chatspeicher, Markdown)
 - `npm run lint` - ESLint
 
 ## Geschäftsmodell-Kontext (für Produktentscheidungen)
