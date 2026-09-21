@@ -47,7 +47,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "lint": "expo lint",
-    "test": "TZ=Europe/Vienna node tests/zeitrechnung.ts && node tests/verlaufsfenster.ts && node --no-warnings --import ./tests/registrieren.mjs tests/tools.ts"
+    "test": "TZ=Europe/Vienna node tests/zeitrechnung.ts && node tests/verlaufsfenster.ts && node tests/markdown.ts && node --no-warnings --import ./tests/registrieren.mjs tests/tools.ts"
   },
   "private": true
 }

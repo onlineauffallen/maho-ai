@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { abstand, radius, schrift, useFarben, type Farben } from '@/lib/theme';
 import { vorschlagBeschriftung, type Vorschlag } from '@/lib/vorschlaege';
+import { markdownStuecke } from '@/lib/markdown';
 
 export type Nachricht = {
   sender: 'user' | 'maho';
@@ -82,7 +83,7 @@ export function ChatFlaeche({
         )}
 
         <Text style={[schrift.klein, { color: f.gedaempft, paddingBottom: abstand.xs }]}>
-          Maho ist eine KI. Antworten können Fehler enthalten.
+          Maho ist eine KI. Fehler sind möglich.
         </Text>
 
         <ScrollView
@@ -101,7 +102,17 @@ export function ChatFlaeche({
             ) : (
               <View key={i} style={stil.mahoBlock}>
                 <View style={stil.mahoInhalt}>
-                  <Text style={[schrift.normal, { color: f.tinte }]}>{m.text}</Text>
+                  <Text style={[schrift.normal, { color: f.tinte }]}>
+                    {markdownStuecke(m.text).map((s, j) =>
+                      s.fett ? (
+                        <Text key={j} style={{ fontFamily: 'Manrope_700Bold' }}>
+                          {s.text}
+                        </Text>
+                      ) : (
+                        s.text
+                      )
+                    )}
+                  </Text>
                   {m.actions?.map((a, j) => (
                     <View key={j} style={stil.aktion}>
                       <Text style={[schrift.klein, { color: f.gut }]}>{a}</Text>
